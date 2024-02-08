@@ -59,6 +59,7 @@ class InvarFitting(Fitting):
         activation_function: str = "tanh",
         precision: str = DEFAULT_PRECISION,
         distinguish_types: bool = False,
+        do_hessian: bool = False,
         **kwargs,
     ):
         """Construct a fitting net for energy.
@@ -77,6 +78,7 @@ class InvarFitting(Fitting):
         self.dim_out = dim_out
         self.neuron = neuron
         self.distinguish_types = distinguish_types
+        self.do_hessian = do_hessian
         self.use_tebd = not self.distinguish_types
         self.resnet_dt = resnet_dt
         self.numb_fparam = numb_fparam
@@ -167,6 +169,7 @@ class InvarFitting(Fitting):
                     reduciable=True,
                     r_differentiable=True,
                     c_differentiable=True,
+                    r_hessian=self.do_hessian,
                 ),
             ]
         )
