@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-import itertools
 from typing import (
     Dict,
     List,
@@ -64,10 +63,14 @@ def make_model(T_AtomicModel):
             """Get the output def for the model."""
             return ModelOutputDef(self.fitting_output_def())
 
-        # cannot use the name forward. torch script does not work
-        # wrapper for computing hessian. We only provide hessian calculation
-        # for the forward interface, thus the jacobian is not used to compute
-        # hessian, but computing from scratch.
+        # Cannot use the name forward. torch script does not work
+        #
+        # Wrapper for computing hessian. We only provide hessian calculation
+        # for the forward interface, not for forward_lower
+        #
+        # Low efficiency: hessian is computed from scratch, we do not use
+        # the jacobian.
+        @torch.jit.export
         def forward_common(
             self,
             coord,
@@ -110,14 +113,17 @@ def make_model(T_AtomicModel):
                 aparam=aparam,
                 do_atomic_virial=do_atomic_virial,
             )
-            hess = self._cal_hessian_all(
-                coord,
-                atype,
-                box=box,
-                fparam=fparam,
-                aparam=aparam,
-            )
-            ret.update(hess)
+            vdef = self.fitting_output_def()
+            hess_yes = [vdef[kk].r_hessian for kk in vdef.keys()]
+            if any(hess_yes):
+                hess = self._cal_hessian_all(
+                    coord,
+                    atype,
+                    box=box,
+                    fparam=fparam,
+                    aparam=aparam,
+                )
+                ret.update(hess)
             return ret
 
         # cannot use the name forward. torch script does not work
@@ -192,6 +198,7 @@ def make_model(T_AtomicModel):
             )
             return model_predict
 
+        @torch.jit.export
         def forward_common_lower(
             self,
             extended_coord,
@@ -336,29 +343,38 @@ def make_model(T_AtomicModel):
             assert nlist.shape[-1] == nnei
             return nlist
 
+        ## FAILED TO JIT this method
+        ## torch/autograd/functional does not support jit script.
+        ## tested torch version: 2.2
+        @torch.jit.ignore
         def _cal_hessian_all(
             self,
-            coord,
-            atype,
+            coord: torch.Tensor,
+            atype: torch.Tensor,
             box: Optional[torch.Tensor] = None,
             fparam: Optional[torch.Tensor] = None,
             aparam: Optional[torch.Tensor] = None,
-        ):
+        ) -> Dict[str, torch.Tensor]:
             nf, nloc = atype.shape
             coord = coord.view([nf, (nloc * 3)])
             box = box.view([nf, 9]) if box is not None else None
             fparam = fparam.view([nf, -1]) if fparam is not None else None
             aparam = aparam.view([nf, nloc, -1]) if aparam is not None else None
             fdef = self.fitting_output_def()
+            # keys of values that require hessian
             hess_keys: List[str] = []
             for kk in fdef.keys():
                 if fdef[kk].r_hessian:
                     hess_keys.append(kk)
+            # result dict init by empty lists
             res = {get_hessian_name(kk): [] for kk in hess_keys}
             # loop over variable
             for kk in hess_keys:
                 vdef = fdef[kk]
                 vshape = vdef.shape
+                vsize = 1
+                for ii in vshape:
+                    vsize *= ii
                 # loop over frames
                 for ii in range(nf):
                     icoord = coord[ii]
@@ -367,7 +383,7 @@ def make_model(T_AtomicModel):
                     ifparam = fparam[ii] if fparam is not None else None
                     iaparam = aparam[ii] if aparam is not None else None
                     # loop over all components
-                    for idx in itertools.product(*[range(ii) for ii in vshape]):
+                    for idx in range(vsize):
                         hess = self._cal_hessian_one_component(
                             idx, icoord, iatype, ibox, ifparam, iaparam
                         )
@@ -391,23 +407,44 @@ def make_model(T_AtomicModel):
             # box: Optional[torch.Tensor] = None,     # 9
             # fparam: Optional[torch.Tensor] = None,  # nfp
             # aparam: Optional[torch.Tensor] = None,  # (nloc x nap)
-            def wrapped_forward_energy(xx):
-                res = self.forward_common_(
-                    xx.unsqueeze(0),
-                    atype.unsqueeze(0),
-                    box.unsqueeze(0) if box is not None else None,
-                    fparam.unsqueeze(0) if fparam is not None else None,
-                    aparam.unsqueeze(0) if aparam is not None else None,
-                    do_atomic_virial=False,
-                )
-                return res["energy_redu"][(0, *ci)]
+            wc = wrapper_class_forward_energy(self, ci, atype, box, fparam, aparam)
 
             hess = torch.autograd.functional.hessian(
-                wrapped_forward_energy,
+                wc,
                 coord,
                 create_graph=False,
-                vectorize=True,
             )
             return hess
+
+    class wrapper_class_forward_energy:
+        def __init__(
+            self,
+            obj: CM,
+            ci: int,
+            atype: torch.Tensor,
+            box: Optional[torch.Tensor],
+            fparam: Optional[torch.Tensor],
+            aparam: Optional[torch.Tensor],
+        ):
+            self.atype, self.box, self.fparam, self.aparam = atype, box, fparam, aparam
+            self.ci = ci
+            self.obj = obj
+
+        def __call__(
+            self,
+            xx,
+        ):
+            ci = self.ci
+            atype, box, fparam, aparam = self.atype, self.box, self.fparam, self.aparam
+            res = self.obj.forward_common_(
+                xx.unsqueeze(0),
+                atype.unsqueeze(0),
+                box.unsqueeze(0) if box is not None else None,
+                fparam.unsqueeze(0) if fparam is not None else None,
+                aparam.unsqueeze(0) if aparam is not None else None,
+                do_atomic_virial=False,
+            )
+            er = res["energy_redu"][0].view([-1])[ci]
+            return er
 
     return CM

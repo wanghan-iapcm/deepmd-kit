@@ -40,8 +40,6 @@ dtype = env.GLOBAL_PT_FLOAT_PRECISION
 class TestDPModel(unittest.TestCase, TestCaseSingleFrameWithoutNlist):
     def setUp(self):
         TestCaseSingleFrameWithoutNlist.setUp(self)
-
-    def test_self_consistency(self):
         nf, nloc = self.atype.shape
         ds = DescrptSeA(
             self.rcut,
@@ -57,7 +55,14 @@ class TestDPModel(unittest.TestCase, TestCaseSingleFrameWithoutNlist):
         ).to(env.DEVICE)
         type_map = ["foo", "bar"]
         # TODO: dirty hack to avoid data stat!!!
-        md0 = DPModel(ds, ft, type_map=type_map, resuming=True).to(env.DEVICE)
+        self.md0 = DPModel(ds, ft, type_map=type_map, resuming=True).to(env.DEVICE)
+
+    def test_methods(self):
+        self.md0.require_hessian(yes=True)
+        self.assertTrue(self.md0.fitting_output_def()["energy"].r_hessian)
+
+    def test_self_consistency(self):
+        md0 = self.md0
         md1 = DPModel.deserialize(md0.serialize()).to(env.DEVICE)
         args = [to_torch_tensor(ii) for ii in [self.coord, self.atype, self.cell]]
         ret0 = md0.forward_common(*args)

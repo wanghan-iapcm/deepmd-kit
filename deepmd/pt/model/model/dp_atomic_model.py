@@ -104,6 +104,10 @@ class DPAtomicModel(BaseModel, BaseAtomicModel):
         """If distinguish different types by sorting."""
         return self.descriptor.distinguish_types()
 
+    def require_hessian(self, yes=False):
+        """Set requirement for the calculation of Hessian."""
+        self.fitting_net.require_hessian(yes=yes)
+
     def serialize(self) -> dict:
         return {
             "type_map": self.type_map,

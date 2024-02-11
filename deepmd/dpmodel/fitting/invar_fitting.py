@@ -126,6 +126,7 @@ class InvarFitting(NativeOP, BaseFitting):
         use_aparam_as_mask: bool = False,
         spin: Any = None,
         distinguish_types: bool = False,
+        do_hessian: bool = False,
     ):
         # seed, uniform_seed are not included
         if tot_ener_zero:
@@ -159,6 +160,7 @@ class InvarFitting(NativeOP, BaseFitting):
         self.use_aparam_as_mask = use_aparam_as_mask
         self.spin = spin
         self.distinguish_types = distinguish_types
+        self.do_hessian = do_hessian
         if self.spin is not None:
             raise NotImplementedError("spin is not supported")
 
@@ -204,9 +206,14 @@ class InvarFitting(NativeOP, BaseFitting):
                     reduciable=True,
                     r_differentiable=True,
                     c_differentiable=True,
+                    r_hessian=self.do_hessian,
                 ),
             ]
         )
+
+    def require_hessian(self, yes=False):
+        """Set requirement for the calculation of Hessian."""
+        self.do_hessian = yes
 
     def __setitem__(self, key, value):
         if key in ["bias_atom_e"]:

@@ -68,6 +68,10 @@ class DPAtomicModel(BaseAtomicModel):
         """
         return self.descriptor.distinguish_types()
 
+    def require_hessian(self, yes=False):
+        """Set requirement for the calculation of Hessian."""
+        self.fitting.require_hessian(yes=yes)
+
     def forward_atomic(
         self,
         extended_coord: np.ndarray,

@@ -174,6 +174,10 @@ class InvarFitting(Fitting):
             ]
         )
 
+    def require_hessian(self, yes=False):
+        """Set requirement for the calculation of Hessian."""
+        self.do_hessian = yes
+
     def __setitem__(self, key, value):
         if key in ["bias_atom_e"]:
             # correct bias_atom_e shape. user may provide stupid  shape

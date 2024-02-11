@@ -25,7 +25,8 @@ def _make_env_mat_se_a(nlist, coord, rcut: float, ruct_smth: float):
     t0 = 1 / length
     t1 = diff / length**2
     weight = compute_smooth_weight(length, ruct_smth, rcut)
-    env_mat_se_a = torch.cat([t0, t1], dim=-1) * weight * mask.unsqueeze(-1)
+    weight = weight * mask.unsqueeze(-1)
+    env_mat_se_a = torch.cat([t0, t1], dim=-1) * weight
     return env_mat_se_a, diff * mask.unsqueeze(-1), weight
 
 

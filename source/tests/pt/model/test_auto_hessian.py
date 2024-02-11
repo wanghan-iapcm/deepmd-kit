@@ -57,7 +57,7 @@ class HessianTest:
         self,
     ):
         places = 8
-        delta = 1e-4
+        delta = 1e-3
         natoms = self.nloc
         nf = self.nf
         nv = self.nv
@@ -72,8 +72,8 @@ class HessianTest:
         coord = coord.view([nf, natoms * 3])
         atype = torch.stack(
             [
-                torch.IntTensor([0, 0, 0, 1, 1]),
-                torch.IntTensor([0, 1, 1, 0, 1]),
+                torch.IntTensor([0, 0, 1]),
+                torch.IntTensor([1, 0, 1]),
             ]
         ).view([nf, natoms])
         # assumes input to be numpy tensor
@@ -81,10 +81,6 @@ class HessianTest:
         nfp, nap = 2, 3
         fparam = torch.rand([nf, nfp], dtype=dtype)
         aparam = torch.rand([nf, natoms * nap], dtype=dtype)
-
-        coord = coord.view([nf, natoms, 3])
-        coord = coord[:, [0, 1, 2, 3, 4], :]
-        coord = coord.view([nf, natoms * 3])
 
         ret_dict0 = self.model_hess.forward_common(
             coord, atype, box=cell, fparam=fparam, aparam=aparam
@@ -129,12 +125,12 @@ class TestDPModel(unittest.TestCase, HessianTest):
     def setUp(self):
         torch.manual_seed(2)
         self.nf = 2
-        self.nloc = 5
+        self.nloc = 3
         self.rcut = 4.0
         self.rcut_smth = 3.0
-        self.sel = [15, 15]
+        self.sel = [10, 10]
         self.nt = 2
-        self.nv = 1
+        self.nv = 2
         ds = DescrptSeA(
             self.rcut,
             self.rcut_smth,
@@ -157,7 +153,7 @@ class TestDPModel(unittest.TestCase, HessianTest):
             env.DEVICE
         )
         self.model_valu = DPModel.deserialize(self.model_hess.serialize())
-
+        self.model_valu.require_hessian(yes=False)
         # args = [to_torch_tensor(ii) for ii in [self.coord, self.atype, self.cell]]
         # ret0 = md0.forward_common(*args)
 

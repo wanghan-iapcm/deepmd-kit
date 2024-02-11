@@ -21,10 +21,6 @@ from .case_single_frame_with_nlist import (
 class TestDPModel(unittest.TestCase, TestCaseSingleFrameWithNlist):
     def setUp(self):
         TestCaseSingleFrameWithNlist.setUp(self)
-
-    def test_self_consistency(
-        self,
-    ):
         nf, nloc, nnei = self.nlist.shape
         ds = DescrptSeA(
             self.rcut,
@@ -39,7 +35,16 @@ class TestDPModel(unittest.TestCase, TestCaseSingleFrameWithNlist):
             distinguish_types=ds.distinguish_types(),
         )
         type_map = ["foo", "bar"]
-        md0 = DPModel(ds, ft, type_map=type_map)
+        self.md0 = DPModel(ds, ft, type_map=type_map)
+
+    def test_methods(self):
+        self.md0.require_hessian(yes=True)
+        self.assertTrue(self.md0.fitting_output_def()["energy"].r_hessian)
+
+    def test_self_consistency(
+        self,
+    ):
+        md0 = self.md0
         md1 = DPModel.deserialize(md0.serialize())
 
         ret0 = md0.call_lower(self.coord_ext, self.atype_ext, self.nlist)
