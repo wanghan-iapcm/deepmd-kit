@@ -754,13 +754,31 @@ class RepformerLayer(torch.nn.Module):
                             seed=child_seed(child_seed(seed, 17), 0),
                         )
                     )
-                    self.h1_residual.append(
+                    self.g1_residual.append(
                         get_residual(
                             g1_dim,
                             self.update_residual,
                             self.update_residual_init,
                             precision=precision,
                             seed=child_seed(child_seed(seed, 17), 1),
+                        )
+                    )
+                    self.h1_residual.append(
+                        get_residual(
+                            g1_dim,
+                            self.update_residual,
+                            self.update_residual_init,
+                            precision=precision,
+                            seed=child_seed(child_seed(seed, 17), 2),
+                        )
+                    )
+                    self.h1_residual.append(
+                        get_residual(
+                            g1_dim,
+                            self.update_residual,
+                            self.update_residual_init,
+                            precision=precision,
+                            seed=child_seed(child_seed(seed, 17), 3),
                         )
                     )
         if self.update_g2_has_g1g1:
@@ -964,8 +982,6 @@ class RepformerLayer(torch.nn.Module):
                     * invnnei[:, :, None]
                     / 3.0
                 )
-                # nb x nloc x ng1
-                g1_1 = g1_11 + g1_12
                 ## the h part: 0.1 + 1.0
                 h1_11 = (
                     torch.einsum("ijkc,ijkdc->ijdc", g2, hh1)
@@ -975,8 +991,6 @@ class RepformerLayer(torch.nn.Module):
                     torch.einsum("ijkdc,ijkc->ijdc", h2, gg1)
                     * invnnei[:, :, None, None]
                 )
-                # nb x nloc x 3 x ng1
-                h1_1 = h1_11 + h1_12
             else:
                 ## implementation via batch matmul
                 g1_11 = (
@@ -1004,8 +1018,6 @@ class RepformerLayer(torch.nn.Module):
                     * invnnei[:, :, None]
                     / 3.0
                 )
-                # nb x nloc x ng1
-                g1_1 = g1_11 + g1_12
                 ## the h part: 0.1 + 1.0
                 tg2 = g2.unsqueeze(-2).expand(-1, -1, -1, 3, -1)
                 h1_11 = (
@@ -1035,10 +1047,8 @@ class RepformerLayer(torch.nn.Module):
                     ).view(nb, nloc, 3, ng1)
                     * invnnei[:, :, None, None]
                 )
-                # nb x nloc x 3 x ng1
-                h1_1 = h1_11 + h1_12
             # print(torch.std(g1_11), torch.std(g1_12), torch.std(h1_11), torch.std(h1_12))
-        return g1_1, h1_1
+        return g1_11, g1_12, h1_11, h1_12
 
     @staticmethod
     def _cal_hg(
@@ -1314,12 +1324,17 @@ class RepformerLayer(torch.nn.Module):
                     h2_update.append(self._update_h2(h2, AAg))
         if self.update_g1_has_conv:
             assert gg1 is not None
-            g1_conv, h1_conv = self._update_g1_conv(gg1, hh1, g2, h2, nlist_mask, sw)
+            g11_conv, g12_conv, h11_conv, h12_conv = self._update_g1_conv(
+                gg1, hh1, g2, h2, nlist_mask, sw
+            )
             if not self.g1_out_conv:
-                g1_mlp.append(g1_conv)
+                g1_mlp.append(g11_conv)
+                g1_mlp.append(g12_conv)
             else:
-                g1_update.append(g1_conv)
-            h1_update.append(h1_conv)
+                g1_update.append(g11_conv)
+                g1_update.append(g12_conv)
+            h1_update.append(h11_conv)
+            h1_update.append(h12_conv)
 
         if self.update_g1_has_grrg:
             g1_mlp.append(
