@@ -245,7 +245,16 @@ class DescrptBlockRepformers(DescriptorBlock):
         self.old_impl = old_impl
 
         self.g2_embd = MLPLayer(
-            1, self.g2_dim, precision=precision, seed=child_seed(seed, 0)
+            1, self.g2_dim, precision=precision, seed=child_seed(child_seed(seed, 0), 0)
+        )
+        self.h2_embd = MLPLayer(
+            1, self.g2_dim, precision=precision, seed=child_seed(child_seed(seed, 0), 1)
+        )
+        self.proj_h2h1 = MLPLayer(
+            self.g2_dim,
+            self.g1_dim,
+            precision=precision,
+            seed=child_seed(child_seed(seed, 0), 2),
         )
         layers = []
         for ii in range(nlayers):
@@ -455,6 +464,7 @@ class DescrptBlockRepformers(DescriptorBlock):
         else:
             atype_embd = extended_atype_embd
         assert isinstance(atype_embd, torch.Tensor)  # for jit
+        # nb x nloc x ng1
         g1 = self.act(atype_embd)
         # nb x nloc x nnei x 1,  nb x nloc x nnei x 3
         if not self.direct_dist:
@@ -465,6 +475,11 @@ class DescrptBlockRepformers(DescriptorBlock):
             h2 = h2 / self.rcut
         # nb x nloc x nnei x ng2
         g2 = self.act(self.g2_embd(g2))
+        # nb x nloc x nnei x 3 x ng2
+        h2 = self.h2_embd(h2.view([nframes, nloc, nnei, 3, 1])) / 2.0
+        # nb x nloc x 3 x ng1
+        h1 = torch.mean(self.proj_h2h1(h2), dim=2) / 3.0
+        # print('std'*10, torch.std(g1), torch.std(h1), torch.std(g2), torch.std(h2))
 
         # set all padding positions to index of 0
         # if the a neighbor is real or not is indicated by nlist_mask
@@ -475,12 +490,16 @@ class DescrptBlockRepformers(DescriptorBlock):
             mapping = (
                 mapping.view(nframes, nall).unsqueeze(-1).expand(-1, -1, self.g1_dim)
             )
+            mapping3 = mapping.view(nframes, nall, 1, self.g1_dim).expand(-1, -1, 3, -1)
         for idx, ll in enumerate(self.layers):
             # g1:     nb x nloc x ng1
             # g1_ext: nb x nall x ng1
+            # h1:     nb x nloc x ng1 x 3
+            # h1_ext: nb x nall x ng1 x 3
             if comm_dict is None:
                 assert mapping is not None
                 g1_ext = torch.gather(g1, 1, mapping)
+                h1_ext = torch.gather(h1, 1, mapping3)
             else:
                 n_padding = nall - nloc
                 g1 = torch.nn.functional.pad(
@@ -504,9 +523,10 @@ class DescrptBlockRepformers(DescriptorBlock):
                     torch.tensor(nall - nloc),  # pylint: disable=no-explicit-dtype,no-explicit-device
                 )
                 g1_ext = ret[0].unsqueeze(0)
-            g1, g2, h2 = ll.forward(
+            g1, g2, h1, h2 = ll.forward(
                 g1_ext,
                 g2,
+                h1_ext,
                 h2,
                 nlist,
                 nlist_mask,
@@ -516,7 +536,7 @@ class DescrptBlockRepformers(DescriptorBlock):
         # nb x nloc x 3 x ng2
         h2g2 = RepformerLayer._cal_hg(
             g2,
-            h2,
+            h2[..., 0],
             nlist_mask,
             sw,
             smooth=self.smooth,
