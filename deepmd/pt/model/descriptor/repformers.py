@@ -248,7 +248,7 @@ class DescrptBlockRepformers(DescriptorBlock):
             1, self.g2_dim, precision=precision, seed=child_seed(child_seed(seed, 0), 0)
         )
         self.h2_embd = MLPLayer(
-            1, self.g2_dim, precision=precision, seed=child_seed(child_seed(seed, 0), 1)
+            1, self.g2_dim, bias=False, precision=precision, seed=child_seed(child_seed(seed, 0), 1), stddev=10.0
         )
         self.proj_h2h1 = MLPLayer(
             self.g2_dim,
