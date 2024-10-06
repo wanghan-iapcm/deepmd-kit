@@ -383,21 +383,22 @@ class Atten2EquiVarApply(torch.nn.Module):
     def forward(
         self,
         AA: torch.Tensor,  # nf x nloc x nnei x nnei x nh
-        h2: torch.Tensor,  # nf x nloc x nnei x 3
+        h2: torch.Tensor,  # nf x nloc x nnei x 3 x ng2
     ) -> torch.Tensor:
-        nf, nloc, nnei, _ = h2.shape
+        nf, nloc, nnei, _, ng2 = h2.shape
+        h2 = h2.view(nf, nloc, nnei, -1)
         nh = self.head_num
         # nf x nloc x nh x nnei x nnei
         AA = torch.permute(AA, (0, 1, 4, 2, 3))
         h2m = torch.unsqueeze(h2, dim=2)
-        # nf x nloc x nh x nnei x 3
+        # nf x nloc x nh x nnei x (3*ng2)
         h2m = torch.tile(h2m, [1, 1, nh, 1, 1])
-        # nf x nloc x nh x nnei x 3
+        # nf x nloc x nh x nnei x (3*ng2)
         ret = torch.matmul(AA, h2m)
-        # nf x nloc x nnei x 3 x nh
-        ret = torch.permute(ret, (0, 1, 3, 4, 2)).view(nf, nloc, nnei, 3, nh)
-        # nf x nloc x nnei x 3
-        return torch.squeeze(self.head_map(ret), dim=-1)
+        # nf x nloc x nnei x (3*ng2) x nh
+        ret = torch.permute(ret, (0, 1, 3, 4, 2)).view(nf, nloc, nnei, 3*ng2, nh)
+        # nf x nloc x nnei x (3*ng2)
+        return torch.squeeze(self.head_map(ret), dim=-1).reshape(nf, nloc, nnei, 3, -1)
 
     def serialize(self) -> dict:
         """Serialize the networks to a dict.
@@ -891,7 +892,7 @@ class RepformerLayer(torch.nn.Module):
         Parameters
         ----------
         h2
-            Pair-wise equivariant rep tensors, with shape nf x nloc x nnei x 3.
+            Pair-wise equivariant rep tensors, with shape nf x nloc x nnei x 3 x ng2.
         attn
             Attention weights from g2 attention, with shape nf x nloc x nnei x nnei x nh2.
         """
@@ -1309,7 +1310,7 @@ class RepformerLayer(torch.nn.Module):
                 # gated_attention(g2, h2)
                 assert self.attn2g_map is not None
                 # nb x nloc x nnei x nnei x nh
-                AAg = self.attn2g_map(g2, h2, nlist_mask, sw)
+                AAg = self.attn2g_map(g2, h2[..., 0], nlist_mask, sw)
 
                 if self.update_g2_has_attn:
                     assert self.attn2_mh_apply is not None
