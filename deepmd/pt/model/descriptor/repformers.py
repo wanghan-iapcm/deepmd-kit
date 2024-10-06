@@ -248,7 +248,12 @@ class DescrptBlockRepformers(DescriptorBlock):
             1, self.g2_dim, precision=precision, seed=child_seed(child_seed(seed, 0), 0)
         )
         self.h2_embd = MLPLayer(
-            1, self.g2_dim, bias=False, precision=precision, seed=child_seed(child_seed(seed, 0), 1), stddev=10.0
+            1,
+            self.g2_dim,
+            precision=precision,
+            bias=False,
+            stddev=4.0,
+            seed=child_seed(child_seed(seed, 0), 1),
         )
         self.proj_h2h1 = MLPLayer(
             self.g2_dim,
@@ -476,7 +481,7 @@ class DescrptBlockRepformers(DescriptorBlock):
         # nb x nloc x nnei x ng2
         g2 = self.act(self.g2_embd(g2))
         # nb x nloc x nnei x 3 x ng2
-        h2 = self.h2_embd(h2.view([nframes, nloc, nnei, 3, 1])) / 2.0
+        h2 = self.h2_embd(h2.view([nframes, nloc, nnei, 3, 1]))
         # nb x nloc x 3 x ng1
         h1 = torch.mean(self.proj_h2h1(h2), dim=2) / 3.0
         # print('std'*10, torch.std(g1), torch.std(h1), torch.std(g2), torch.std(h2))
