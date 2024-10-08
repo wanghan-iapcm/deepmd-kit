@@ -93,6 +93,7 @@ class DescrptBlockRepformers(DescriptorBlock):
         attn2_hidden: int = 16,
         attn2_nhead: int = 4,
         attn2_has_gate: bool = False,
+        attn2_gate_mode: str = "first-element-multi",
         activation_function: str = "tanh",
         update_style: str = "res_avg",
         update_residual: float = 0.001,
@@ -228,6 +229,7 @@ class DescrptBlockRepformers(DescriptorBlock):
         self.attn1_hidden = attn1_hidden
         self.attn1_nhead = attn1_nhead
         self.attn2_has_gate = attn2_has_gate
+        self.attn2_gate_mode = attn2_gate_mode
         self.attn2_hidden = attn2_hidden
         self.attn2_nhead = attn2_nhead
         self.activation_function = activation_function
@@ -296,6 +298,7 @@ class DescrptBlockRepformers(DescriptorBlock):
                         attn1_hidden=self.attn1_hidden,
                         attn1_nhead=self.attn1_nhead,
                         attn2_has_gate=self.attn2_has_gate,
+                        attn2_gate_mode=self.attn2_gate_mode,
                         attn2_hidden=self.attn2_hidden,
                         attn2_nhead=self.attn2_nhead,
                         activation_function=self.activation_function,
@@ -324,6 +327,7 @@ class DescrptBlockRepformers(DescriptorBlock):
                         attn1_hidden=self.attn1_hidden,
                         attn1_nhead=self.attn1_nhead,
                         attn2_has_gate=self.attn2_has_gate,
+                        attn2_gate_mode=self.attn2_gate_mode,
                         attn2_hidden=self.attn2_hidden,
                         attn2_nhead=self.attn2_nhead,
                         activation_function=self.activation_function,
@@ -549,7 +553,7 @@ class DescrptBlockRepformers(DescriptorBlock):
                     torch.tensor(nall - nloc),  # pylint: disable=no-explicit-dtype,no-explicit-device
                 )
                 g1_ext = ret[0].unsqueeze(0)
-                h1_ext = ret[0].unsqueeze(0) # place holder
+                h1_ext = ret[0].unsqueeze(0)  # place holder
             assert h1_ext is not None
             g1, g2, h1, h2 = ll.forward(
                 g1_ext,
