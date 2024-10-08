@@ -3,6 +3,7 @@ from typing import (
     List,
     Optional,
     Union,
+    Tuple,
 )
 
 import torch
@@ -587,8 +588,8 @@ class RepformerLayer(torch.nn.Module):
         update_g2_has_g1g1: bool = True,
         update_g2_has_attn: bool = True,
         update_h2: bool = False,
-        update_h2_has_g2: bool = True,
-        update_h1_has_g1: bool = True,
+        update_h1_has_g1: bool = False,
+        update_h2_has_g2: bool = False,
         attn1_hidden: int = 64,
         attn1_nhead: int = 4,
         attn2_hidden: int = 16,
@@ -605,6 +606,10 @@ class RepformerLayer(torch.nn.Module):
         use_sqrt_nnei: bool = True,
         g1_out_conv: bool = True,
         g1_out_mlp: bool = True,
+        output_g1_ln=False,
+        output_g2_ln=False,
+        output_h1_ln=False,
+        output_h2_ln=False,
         seed: Optional[Union[int, List[int]]] = None,
     ):
         super().__init__()
@@ -656,6 +661,10 @@ class RepformerLayer(torch.nn.Module):
         self.use_sqrt_nnei = use_sqrt_nnei
         self.g1_out_conv = g1_out_conv
         self.g1_out_mlp = g1_out_mlp
+        self.output_g1_ln = output_g1_ln
+        self.output_g2_ln = output_g2_ln
+        self.output_h1_ln = output_h1_ln
+        self.output_h2_ln = output_h2_ln
 
         assert update_residual_init in [
             "norm",
@@ -695,6 +704,10 @@ class RepformerLayer(torch.nn.Module):
         self.attn2_lm = None
         self.attn2_ev_apply = None
         self.loc_attn = None
+        self.g1_ln = None
+        self.g2_ln = None
+        self.h1_ln = None
+        self.h2_ln = None
 
         if self.update_chnnl_2:
             self.linear2 = MLPLayer(
@@ -919,6 +932,38 @@ class RepformerLayer(torch.nn.Module):
         self.g2_residual = nn.ParameterList(self.g2_residual)
         self.h1_residual = nn.ParameterList(self.h1_residual)
         self.h2_residual = nn.ParameterList(self.h2_residual)
+        if self.output_g1_ln:
+            self.g1_ln = LayerNorm(
+                g1_dim,
+                eps=ln_eps,
+                trainable=trainable_ln,
+                precision=precision,
+                seed=child_seed(seed, 18),
+            )
+        if self.output_g2_ln:
+            self.g2_ln = LayerNorm(
+                g2_dim,
+                eps=ln_eps,
+                trainable=trainable_ln,
+                precision=precision,
+                seed=child_seed(seed, 19),
+            )
+        if self.output_h1_ln:
+            self.h1_ln = LayerNorm(
+                g1_dim,
+                eps=ln_eps,
+                trainable=trainable_ln,
+                precision=precision,
+                seed=child_seed(seed, 20),
+            )
+        if self.output_h2_ln:
+            self.h2_ln = LayerNorm(
+                g2_dim,
+                eps=ln_eps,
+                trainable=trainable_ln,
+                precision=precision,
+                seed=child_seed(seed, 21),
+            )
 
     def cal_1_dim(self, g1d: int, g2d: int, ax: int) -> int:
         ret = g1d if not self.g1_out_mlp else 0
@@ -958,7 +1003,7 @@ class RepformerLayer(torch.nn.Module):
         h2: torch.Tensor,  # nb x nloc x nnei x 3 x ng2
         nlist_mask: torch.Tensor,
         sw: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Calculate the convolution update for atomic invariant rep.
 
@@ -974,14 +1019,11 @@ class RepformerLayer(torch.nn.Module):
             The switch function, which equals 1 within the rcut_smth range, smoothly decays from 1 to 0 between rcut_smth and rcut,
             and remains 0 beyond rcut, with shape nb x nloc x nnei.
         """
-        assert self.proj_g1g2_1 is not None
-        assert self.proj_h1h2_1 is not None
-        assert self.proj_g1g2_2 is not None
-        assert self.proj_h1h2_2 is not None
         nb, nloc, nnei, _ = g2.shape
         ng1 = gg1.shape[-1]
         ng2 = g2.shape[-1]
         if not self.g1_out_conv:
+            assert self.proj_g1g2 is not None
             # gg1  : nb x nloc x nnei x ng2
             gg1 = self.proj_g1g2(gg1).view(nb, nloc, nnei, ng2)
         else:
@@ -1012,10 +1054,14 @@ class RepformerLayer(torch.nn.Module):
             )
         if not self.g1_out_conv:
             # nb x nloc x ng2
-            g1_11 = torch.sum(g2 * gg1, dim=2) * invnnei
-            g1_1 = g1_11
-            h1_1 = None
+            g1_1 = torch.sum(g2 * gg1, dim=2) * invnnei
+            g1_11 = g1_1
+            g1_12, h1_11, h1_12 = None, None, None
         else:
+            assert self.proj_g1g2_1 is not None
+            assert self.proj_h1h2_1 is not None
+            assert self.proj_g1g2_2 is not None
+            assert self.proj_h1h2_2 is not None
             # nb x nloc x ng1
             g2_1 = self.proj_g1g2_1(g2).view(nb, nloc, nnei, ng1)
             g2_2 = self.proj_g1g2_2(g2).view(nb, nloc, nnei, ng1)
@@ -1112,6 +1158,9 @@ class RepformerLayer(torch.nn.Module):
             #   torch.std(h1_11).detach().numpy(),
             #   torch.std(h1_12).detach().numpy(),
             # )
+        assert g1_12 is not None
+        assert h1_11 is not None
+        assert h1_12 is not None
         return g1_11, g1_12, h1_11, h1_12
 
     @staticmethod
@@ -1353,6 +1402,7 @@ class RepformerLayer(torch.nn.Module):
             )
         else:
             gg1 = None
+            hh1 = None
 
         if self.update_chnnl_2:
             # mlp(g2)
@@ -1389,6 +1439,7 @@ class RepformerLayer(torch.nn.Module):
 
         if self.update_g1_has_conv:
             assert gg1 is not None
+            assert hh1 is not None
             g11_conv, g12_conv, h11_conv, h12_conv = self._update_g1_conv(
                 gg1, hh1, g2, h2, nlist_mask, sw
             )
@@ -1452,6 +1503,18 @@ class RepformerLayer(torch.nn.Module):
             g2_new, h2_new = g2, h2
         g1_new = self.list_update(g1_update, "g1")
         h1_new = self.list_update(h1_update, "h1")
+        if self.output_g1_ln:
+            assert self.g1_ln is not None
+            g1_new = self.g1_ln(g1_new)
+        if self.output_g2_ln:
+            assert self.g2_ln is not None
+            g2_new = self.g2_ln(g2_new)
+        if self.output_h1_ln:
+            assert self.h1_ln is not None
+            h1_new = self.h1_ln(h1_new)
+        if self.output_h2_ln:
+            assert self.h2_ln is not None
+            h2_new = self.h2_ln(h2_new)
         return g1_new, g2_new, h1_new, h2_new
 
     @torch.jit.export
@@ -1482,19 +1545,15 @@ class RepformerLayer(torch.nn.Module):
         uu = update_list[0]
         # make jit happy
         if update_name == "g1":
-            assert nitem == len(self.g1_residual) + 1
             for ii, vv in enumerate(self.g1_residual):
                 uu = uu + vv * update_list[ii + 1]
         elif update_name == "g2":
-            assert nitem == len(self.g2_residual) + 1
             for ii, vv in enumerate(self.g2_residual):
                 uu = uu + vv * update_list[ii + 1]
         elif update_name == "h1":
-            assert nitem == len(self.h1_residual) + 1
             for ii, vv in enumerate(self.h1_residual):
                 uu = uu + vv * update_list[ii + 1]
         elif update_name == "h2":
-            assert nitem == len(self.h2_residual) + 1
             for ii, vv in enumerate(self.h2_residual):
                 uu = uu + vv * update_list[ii + 1]
         else:

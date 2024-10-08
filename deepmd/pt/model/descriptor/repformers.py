@@ -108,6 +108,12 @@ class DescrptBlockRepformers(DescriptorBlock):
         use_sqrt_nnei: bool = True,
         g1_out_conv: bool = True,
         g1_out_mlp: bool = True,
+        output_g1_ln: bool = False,
+        output_g2_ln: bool = False,
+        output_h1_ln: bool = False,
+        output_h2_ln: bool = False,
+        update_h1_has_g1: bool = False,
+        update_h2_has_g2: bool = False,
         old_impl: bool = False,
     ):
         r"""
@@ -234,6 +240,12 @@ class DescrptBlockRepformers(DescriptorBlock):
         self.use_sqrt_nnei = use_sqrt_nnei
         self.g1_out_conv = g1_out_conv
         self.g1_out_mlp = g1_out_mlp
+        self.update_h1_has_g1 = update_h1_has_g1
+        self.update_h2_has_g2 = update_h2_has_g2
+        self.output_g1_ln = output_g1_ln
+        self.output_g2_ln = output_g2_ln
+        self.output_h1_ln = output_h1_ln
+        self.output_h2_ln = output_h2_ln
         # order matters, placed after the assignment of self.ntypes
         self.reinit_exclude(exclude_types)
         self.env_protection = env_protection
@@ -325,6 +337,12 @@ class DescrptBlockRepformers(DescriptorBlock):
                         use_sqrt_nnei=self.use_sqrt_nnei,
                         g1_out_conv=self.g1_out_conv,
                         g1_out_mlp=self.g1_out_mlp,
+                        update_h1_has_g1=self.update_h1_has_g1,
+                        update_h2_has_g2=self.update_h2_has_g2,
+                        output_g1_ln=self.output_g1_ln,
+                        output_g2_ln=self.output_g2_ln,
+                        output_h1_ln=self.output_h1_ln,
+                        output_h2_ln=self.output_h2_ln,
                         seed=child_seed(child_seed(seed, 1), ii),
                     )
                 )
@@ -496,6 +514,8 @@ class DescrptBlockRepformers(DescriptorBlock):
                 mapping.view(nframes, nall).unsqueeze(-1).expand(-1, -1, self.g1_dim)
             )
             mapping3 = mapping.view(nframes, nall, 1, self.g1_dim).expand(-1, -1, 3, -1)
+        else:
+            mapping3 = None
         for idx, ll in enumerate(self.layers):
             # g1:     nb x nloc x ng1
             # g1_ext: nb x nall x ng1
@@ -503,6 +523,7 @@ class DescrptBlockRepformers(DescriptorBlock):
             # h1_ext: nb x nall x ng1 x 3
             if comm_dict is None:
                 assert mapping is not None
+                assert mapping3 is not None
                 g1_ext = torch.gather(g1, 1, mapping)
                 h1_ext = torch.gather(h1, 1, mapping3)
             else:
@@ -528,6 +549,8 @@ class DescrptBlockRepformers(DescriptorBlock):
                     torch.tensor(nall - nloc),  # pylint: disable=no-explicit-dtype,no-explicit-device
                 )
                 g1_ext = ret[0].unsqueeze(0)
+                h1_ext = ret[0].unsqueeze(0) # place holder
+            assert h1_ext is not None
             g1, g2, h1, h2 = ll.forward(
                 g1_ext,
                 g2,
