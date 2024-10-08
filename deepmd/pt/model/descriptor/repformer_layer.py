@@ -1545,15 +1545,18 @@ class RepformerLayer(torch.nn.Module):
         uu = update_list[0]
         # make jit happy
         if update_name == "g1":
+            assert nitem == len(self.g1_residual) + 1
             for ii, vv in enumerate(self.g1_residual):
                 uu = uu + vv * update_list[ii + 1]
         elif update_name == "g2":
+            assert nitem == len(self.g2_residual) + 1
             for ii, vv in enumerate(self.g2_residual):
                 uu = uu + vv * update_list[ii + 1]
         elif update_name == "h1":
             for ii, vv in enumerate(self.h1_residual):
                 uu = uu + vv * update_list[ii + 1]
         elif update_name == "h2":
+            assert nitem == len(self.h2_residual) + 1
             for ii, vv in enumerate(self.h2_residual):
                 uu = uu + vv * update_list[ii + 1]
         else:

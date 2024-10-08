@@ -549,7 +549,7 @@ class DescrptBlockRepformers(DescriptorBlock):
                     torch.tensor(nall - nloc),  # pylint: disable=no-explicit-dtype,no-explicit-device
                 )
                 g1_ext = ret[0].unsqueeze(0)
-                h1_ext = ret[0].unsqueeze(0)
+                h1_ext = ret[0].unsqueeze(0) # place holder
             assert h1_ext is not None
             g1, g2, h1, h2 = ll.forward(
                 g1_ext,
