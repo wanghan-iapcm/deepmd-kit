@@ -237,6 +237,12 @@ class DescrptDPA2(BaseDescriptor, torch.nn.Module):
             use_sqrt_nnei=self.repformer_args.use_sqrt_nnei,
             g1_out_conv=self.repformer_args.g1_out_conv,
             g1_out_mlp=self.repformer_args.g1_out_mlp,
+            update_h1_has_g1=self.repformer_args.update_h1_has_g1,
+            update_h2_has_g2=self.repformer_args.update_h2_has_g2,
+            output_g1_ln=self.repformer_args.output_g1_ln,
+            output_g2_ln=self.repformer_args.output_g2_ln,
+            output_h1_ln=self.repformer_args.output_h1_ln,
+            output_h2_ln=self.repformer_args.output_h2_ln,
             seed=child_seed(seed, 1),
             old_impl=old_impl,
         )

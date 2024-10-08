@@ -206,6 +206,12 @@ class RepformerArgs:
         use_sqrt_nnei: bool = True,
         g1_out_conv: bool = True,
         g1_out_mlp: bool = True,
+        update_h1_has_g1: bool = False,
+        update_h2_has_g2: bool = False,
+        output_g1_ln: bool = False,
+        output_g2_ln: bool = False,
+        output_h1_ln: bool = False,
+        output_h2_ln: bool = False,
         ln_eps: Optional[float] = 1e-5,
     ):
         r"""The constructor for the RepformerArgs class which defines the parameters of the repformer block in DPA2 descriptor.
@@ -308,6 +314,12 @@ class RepformerArgs:
         self.use_sqrt_nnei = use_sqrt_nnei
         self.g1_out_conv = g1_out_conv
         self.g1_out_mlp = g1_out_mlp
+        self.update_h1_has_g1 = update_h1_has_g1
+        self.update_h2_has_g2 = update_h2_has_g2
+        self.output_g1_ln = output_g1_ln
+        self.output_g2_ln = output_g2_ln
+        self.output_h1_ln = output_h1_ln
+        self.output_h2_ln = output_h2_ln
         #  to keep consistent with default value in this backends
         if ln_eps is None:
             ln_eps = 1e-5
