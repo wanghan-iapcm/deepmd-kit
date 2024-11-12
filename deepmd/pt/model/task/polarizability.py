@@ -229,6 +229,9 @@ class PolarFittingNet(GeneralFitting):
         fparam: Optional[torch.Tensor] = None,
         aparam: Optional[torch.Tensor] = None,
     ):
+        descriptor, atype, gr, g2, h2, fparam, aparam = self.cast_inputs_types(
+            descriptor, atype, gr, g2, h2, fparam, aparam
+        )
         nframes, nloc, _ = descriptor.shape
         assert (
             gr is not None

@@ -177,7 +177,11 @@ class InvarFitting(GeneralFitting):
         -------
         - `torch.Tensor`: Total energy with shape [nframes, natoms[0]].
         """
-        return self._forward_common(descriptor, atype, gr, g2, h2, fparam, aparam)
+        descriptor, atype, gr, g2, h2, fparam, aparam = self.cast_inputs_types(
+            descriptor, atype, gr, g2, h2, fparam, aparam
+        )
+        ret = self._forward_common(descriptor, atype, gr, g2, h2, fparam, aparam)
+        ret = {kk: vv.to(env.GLOBAL_PT_FLOAT_PRECISION) for kk, vv in ret.items()}
 
     # make jit happy with torch 2.0.0
     exclude_types: list[int]

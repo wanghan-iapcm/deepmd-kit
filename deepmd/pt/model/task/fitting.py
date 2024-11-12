@@ -503,4 +503,30 @@ class GeneralFitting(Fitting):
         mask = self.emask(atype)
         # nf x nloc x nod
         outs = outs * mask[:, :, None]
-        return {self.var_name: outs.to(env.GLOBAL_PT_FLOAT_PRECISION)}
+        return {self.var_name: outs}
+
+    def cast_inputs_types(
+        self,
+        descriptor: torch.Tensor,
+        atype: torch.Tensor,
+        gr: Optional[torch.Tensor] = None,
+        g2: Optional[torch.Tensor] = None,
+        h2: Optional[torch.Tensor] = None,
+        fparam: Optional[torch.Tensor] = None,
+        aparam: Optional[torch.Tensor] = None,
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+        Optional[torch.Tensor],
+    ]:
+        descriptor = descriptor.to(self.prec)
+        gr = gr.to(self.prec) if gr is not None else None
+        g2 = g2.to(self.prec) if g2 is not None else None
+        h2 = h2.to(self.prec) if h2 is not None else None
+        fparam = fparam.to(self.prec) if fparam is not None else None
+        aparam = aparam.to(self.prec) if aparam is not None else None
+        return descriptor, atype, gr, g2, h2, fparam, aparam
