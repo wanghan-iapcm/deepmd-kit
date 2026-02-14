@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-import itertools
-import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from deepmd.dpmodel.descriptor.dpa2 import DescrptDPA2 as DPDescrptDPA2
@@ -31,12 +30,28 @@ from ...seed import (
 )
 
 
-class TestDescrptDPA2(unittest.TestCase, TestCaseSingleFrameWithNlist):
-    def setUp(self) -> None:
+class TestDescrptDPA2(TestCaseSingleFrameWithNlist):
+    def setup_method(self) -> None:
         TestCaseSingleFrameWithNlist.setUp(self)
         self.device = env.DEVICE
 
-    def test_consistency(self) -> None:
+    @pytest.mark.parametrize("riti", ["concat", "strip"])  # repinit_tebd_input_mode
+    @pytest.mark.parametrize("rp1c", [True, False])  # repformer_update_g1_has_conv
+    @pytest.mark.parametrize("rp1d", [True, False])  # repformer_update_g1_has_drrd
+    @pytest.mark.parametrize("rp1g", [True, False])  # repformer_update_g1_has_grrg
+    @pytest.mark.parametrize("rp2a", [True, False])  # repformer_update_g2_has_attn
+    @pytest.mark.parametrize(
+        "rus", ["res_avg", "res_residual"]
+    )  # repformer_update_style
+    @pytest.mark.parametrize("prec", ["float64"])  # precision
+    @pytest.mark.parametrize("ect", [False, True])  # use_econf_tebd
+    @pytest.mark.parametrize("ns", [False, True])  # new sub-structures
+    def test_consistency(
+        self, riti, rp1c, rp1d, rp1g, rp2a, rus, prec, ect, ns
+    ) -> None:
+        if ns and not rp1d and not rp1g:
+            pytest.skip("invalid parameter combination")
+
         rng = np.random.default_rng(GLOBAL_SEED)
         nf, nloc, nnei = self.nlist.shape
         davg = rng.normal(size=(self.nt, nnei, 4))
@@ -46,134 +61,105 @@ class TestDescrptDPA2(unittest.TestCase, TestCaseSingleFrameWithNlist):
         dstd = 0.1 + np.abs(dstd)
         dstd_2 = 0.1 + np.abs(dstd_2)
 
-        for (
-            riti,
-            riz,
-            rp1c,
-            rp1d,
-            rp1g,
-            rp1a,
-            rp2g,
-            rp2a,
-            rph,
-            rp2gate,
-            rus,
-            rpz,
-            sm,
-            prec,
-            ect,
-            ns,
-        ) in itertools.product(
-            ["concat", "strip"],  # repinit_tebd_input_mode
-            [True],  # repinit_set_davg_zero
-            [True, False],  # repformer_update_g1_has_conv
-            [True, False],  # repformer_update_g1_has_drrd
-            [True, False],  # repformer_update_g1_has_grrg
-            [False],  # repformer_update_g1_has_attn
-            [False],  # repformer_update_g2_has_g1g1
-            [True, False],  # repformer_update_g2_has_attn
-            [False],  # repformer_update_h2
-            [True],  # repformer_attn2_has_gate
-            ["res_avg", "res_residual"],  # repformer_update_style
-            [True],  # repformer_set_davg_zero
-            [True],  # smooth
-            ["float64"],  # precision
-            [False, True],  # use_econf_tebd
-            [False, True],  # new sub-structures
-        ):
-            if ns and not rp1d and not rp1g:
-                continue
-            dtype = PRECISION_DICT[prec]
-            rtol, atol = get_tols(prec)
-            if prec == "float64":
-                atol = 1e-8  # marginal test cases
+        # fixed parameters
+        riz = True  # repinit_set_davg_zero
+        rp1a = False  # repformer_update_g1_has_attn
+        rp2g = False  # repformer_update_g2_has_g1g1
+        rph = False  # repformer_update_h2
+        rp2gate = True  # repformer_attn2_has_gate
+        rpz = True  # repformer_set_davg_zero
+        sm = True  # smooth
 
-            repinit = RepinitArgs(
-                rcut=self.rcut,
-                rcut_smth=self.rcut_smth,
-                nsel=self.sel_mix,
-                tebd_input_mode=riti,
-                set_davg_zero=riz,
-            )
-            repformer = RepformerArgs(
-                rcut=self.rcut / 2,
-                rcut_smth=self.rcut_smth,
-                nsel=nnei // 2,
-                nlayers=3,
-                g1_dim=20,
-                g2_dim=10,
-                axis_neuron=4,
-                update_g1_has_conv=rp1c,
-                update_g1_has_drrd=rp1d,
-                update_g1_has_grrg=rp1g,
-                update_g1_has_attn=rp1a,
-                update_g2_has_g1g1=rp2g,
-                update_g2_has_attn=rp2a,
-                update_h2=rph,
-                attn1_hidden=20,
-                attn1_nhead=2,
-                attn2_hidden=10,
-                attn2_nhead=2,
-                attn2_has_gate=rp2gate,
-                update_style=rus,
-                set_davg_zero=rpz,
-                use_sqrt_nnei=ns,
-                g1_out_conv=ns,
-                g1_out_mlp=ns,
-            )
+        dtype = PRECISION_DICT[prec]
+        rtol, atol = get_tols(prec)
+        if prec == "float64":
+            atol = 1e-8  # marginal test cases
 
-            dd0 = DescrptDPA2(
-                self.nt,
-                repinit=repinit,
-                repformer=repformer,
-                smooth=sm,
-                exclude_types=[],
-                add_tebd_to_repinit_out=False,
-                precision=prec,
-                use_econf_tebd=ect,
-                type_map=["O", "H"] if ect else None,
-                seed=GLOBAL_SEED,
-            ).to(self.device)
+        repinit = RepinitArgs(
+            rcut=self.rcut,
+            rcut_smth=self.rcut_smth,
+            nsel=self.sel_mix,
+            tebd_input_mode=riti,
+            set_davg_zero=riz,
+        )
+        repformer = RepformerArgs(
+            rcut=self.rcut / 2,
+            rcut_smth=self.rcut_smth,
+            nsel=nnei // 2,
+            nlayers=3,
+            g1_dim=20,
+            g2_dim=10,
+            axis_neuron=4,
+            update_g1_has_conv=rp1c,
+            update_g1_has_drrd=rp1d,
+            update_g1_has_grrg=rp1g,
+            update_g1_has_attn=rp1a,
+            update_g2_has_g1g1=rp2g,
+            update_g2_has_attn=rp2a,
+            update_h2=rph,
+            attn1_hidden=20,
+            attn1_nhead=2,
+            attn2_hidden=10,
+            attn2_nhead=2,
+            attn2_has_gate=rp2gate,
+            update_style=rus,
+            set_davg_zero=rpz,
+            use_sqrt_nnei=ns,
+            g1_out_conv=ns,
+            g1_out_mlp=ns,
+        )
 
-            dd0.repinit.mean = torch.tensor(davg, dtype=dtype, device=self.device)
-            dd0.repinit.stddev = torch.tensor(dstd, dtype=dtype, device=self.device)
-            dd0.repformers.mean = torch.tensor(davg_2, dtype=dtype, device=self.device)
-            dd0.repformers.stddev = torch.tensor(
-                dstd_2, dtype=dtype, device=self.device
-            )
-            rd0, _, _, _, _ = dd0(
-                torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
-                torch.tensor(self.atype_ext, dtype=int, device=self.device),
-                torch.tensor(self.nlist, dtype=int, device=self.device),
-                torch.tensor(self.mapping, dtype=int, device=self.device),
-            )
-            # serialization round-trip
-            dd1 = DescrptDPA2.deserialize(dd0.serialize())
-            rd1, _, _, _, _ = dd1(
-                torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
-                torch.tensor(self.atype_ext, dtype=int, device=self.device),
-                torch.tensor(self.nlist, dtype=int, device=self.device),
-                torch.tensor(self.mapping, dtype=int, device=self.device),
-            )
-            np.testing.assert_allclose(
-                rd0.detach().cpu().numpy(),
-                rd1.detach().cpu().numpy(),
-                rtol=rtol,
-                atol=atol,
-            )
-            # dp impl
-            dd2 = DPDescrptDPA2.deserialize(dd0.serialize())
-            rd2, _, _, _, _ = dd2.call(
-                self.coord_ext, self.atype_ext, self.nlist, self.mapping
-            )
-            np.testing.assert_allclose(
-                rd0.detach().cpu().numpy(),
-                rd2,
-                rtol=rtol,
-                atol=atol,
-            )
+        dd0 = DescrptDPA2(
+            self.nt,
+            repinit=repinit,
+            repformer=repformer,
+            smooth=sm,
+            exclude_types=[],
+            add_tebd_to_repinit_out=False,
+            precision=prec,
+            use_econf_tebd=ect,
+            type_map=["O", "H"] if ect else None,
+            seed=GLOBAL_SEED,
+        ).to(self.device)
 
-    def test_exportable(self) -> None:
+        dd0.repinit.mean = torch.tensor(davg, dtype=dtype, device=self.device)
+        dd0.repinit.stddev = torch.tensor(dstd, dtype=dtype, device=self.device)
+        dd0.repformers.mean = torch.tensor(davg_2, dtype=dtype, device=self.device)
+        dd0.repformers.stddev = torch.tensor(dstd_2, dtype=dtype, device=self.device)
+        rd0, _, _, _, _ = dd0(
+            torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
+            torch.tensor(self.atype_ext, dtype=int, device=self.device),
+            torch.tensor(self.nlist, dtype=int, device=self.device),
+            torch.tensor(self.mapping, dtype=int, device=self.device),
+        )
+        # serialization round-trip
+        dd1 = DescrptDPA2.deserialize(dd0.serialize())
+        rd1, _, _, _, _ = dd1(
+            torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
+            torch.tensor(self.atype_ext, dtype=int, device=self.device),
+            torch.tensor(self.nlist, dtype=int, device=self.device),
+            torch.tensor(self.mapping, dtype=int, device=self.device),
+        )
+        np.testing.assert_allclose(
+            rd0.detach().cpu().numpy(),
+            rd1.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+        )
+        # dp impl
+        dd2 = DPDescrptDPA2.deserialize(dd0.serialize())
+        rd2, _, _, _, _ = dd2.call(
+            self.coord_ext, self.atype_ext, self.nlist, self.mapping
+        )
+        np.testing.assert_allclose(
+            rd0.detach().cpu().numpy(),
+            rd2,
+            rtol=rtol,
+            atol=atol,
+        )
+
+    @pytest.mark.parametrize("prec", ["float64", "float32"])  # precision
+    def test_exportable(self, prec) -> None:
         rng = np.random.default_rng(GLOBAL_SEED)
         nf, nloc, nnei = self.nlist.shape
         davg = rng.normal(size=(self.nt, nnei, 4))
@@ -183,65 +169,62 @@ class TestDescrptDPA2(unittest.TestCase, TestCaseSingleFrameWithNlist):
         dstd = 0.1 + np.abs(dstd)
         dstd_2 = 0.1 + np.abs(dstd_2)
 
-        for prec in ["float64", "float32"]:
-            dtype = PRECISION_DICT[prec]
+        dtype = PRECISION_DICT[prec]
 
-            repinit = RepinitArgs(
-                rcut=self.rcut,
-                rcut_smth=self.rcut_smth,
-                nsel=self.sel_mix,
-                tebd_input_mode="concat",
-                set_davg_zero=True,
-            )
-            repformer = RepformerArgs(
-                rcut=self.rcut / 2,
-                rcut_smth=self.rcut_smth,
-                nsel=nnei // 2,
-                nlayers=3,
-                g1_dim=20,
-                g2_dim=10,
-                axis_neuron=4,
-                update_g1_has_conv=True,
-                update_g1_has_drrd=True,
-                update_g1_has_grrg=True,
-                update_g1_has_attn=False,
-                update_g2_has_g1g1=False,
-                update_g2_has_attn=True,
-                update_h2=False,
-                attn1_hidden=20,
-                attn1_nhead=2,
-                attn2_hidden=10,
-                attn2_nhead=2,
-                attn2_has_gate=True,
-                update_style="res_avg",
-                set_davg_zero=True,
-                use_sqrt_nnei=True,
-                g1_out_conv=True,
-                g1_out_mlp=True,
-            )
+        repinit = RepinitArgs(
+            rcut=self.rcut,
+            rcut_smth=self.rcut_smth,
+            nsel=self.sel_mix,
+            tebd_input_mode="concat",
+            set_davg_zero=True,
+        )
+        repformer = RepformerArgs(
+            rcut=self.rcut / 2,
+            rcut_smth=self.rcut_smth,
+            nsel=nnei // 2,
+            nlayers=3,
+            g1_dim=20,
+            g2_dim=10,
+            axis_neuron=4,
+            update_g1_has_conv=True,
+            update_g1_has_drrd=True,
+            update_g1_has_grrg=True,
+            update_g1_has_attn=False,
+            update_g2_has_g1g1=False,
+            update_g2_has_attn=True,
+            update_h2=False,
+            attn1_hidden=20,
+            attn1_nhead=2,
+            attn2_hidden=10,
+            attn2_nhead=2,
+            attn2_has_gate=True,
+            update_style="res_avg",
+            set_davg_zero=True,
+            use_sqrt_nnei=True,
+            g1_out_conv=True,
+            g1_out_mlp=True,
+        )
 
-            dd0 = DescrptDPA2(
-                self.nt,
-                repinit=repinit,
-                repformer=repformer,
-                smooth=True,
-                exclude_types=[],
-                add_tebd_to_repinit_out=False,
-                precision=prec,
-                seed=GLOBAL_SEED,
-            ).to(self.device)
+        dd0 = DescrptDPA2(
+            self.nt,
+            repinit=repinit,
+            repformer=repformer,
+            smooth=True,
+            exclude_types=[],
+            add_tebd_to_repinit_out=False,
+            precision=prec,
+            seed=GLOBAL_SEED,
+        ).to(self.device)
 
-            dd0.repinit.mean = torch.tensor(davg, dtype=dtype, device=self.device)
-            dd0.repinit.stddev = torch.tensor(dstd, dtype=dtype, device=self.device)
-            dd0.repformers.mean = torch.tensor(davg_2, dtype=dtype, device=self.device)
-            dd0.repformers.stddev = torch.tensor(
-                dstd_2, dtype=dtype, device=self.device
-            )
-            dd0 = dd0.eval()
-            inputs = (
-                torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
-                torch.tensor(self.atype_ext, dtype=int, device=self.device),
-                torch.tensor(self.nlist, dtype=int, device=self.device),
-                torch.tensor(self.mapping, dtype=int, device=self.device),
-            )
-            torch.export.export(dd0, inputs)
+        dd0.repinit.mean = torch.tensor(davg, dtype=dtype, device=self.device)
+        dd0.repinit.stddev = torch.tensor(dstd, dtype=dtype, device=self.device)
+        dd0.repformers.mean = torch.tensor(davg_2, dtype=dtype, device=self.device)
+        dd0.repformers.stddev = torch.tensor(dstd_2, dtype=dtype, device=self.device)
+        dd0 = dd0.eval()
+        inputs = (
+            torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
+            torch.tensor(self.atype_ext, dtype=int, device=self.device),
+            torch.tensor(self.nlist, dtype=int, device=self.device),
+            torch.tensor(self.mapping, dtype=int, device=self.device),
+        )
+        torch.export.export(dd0, inputs)

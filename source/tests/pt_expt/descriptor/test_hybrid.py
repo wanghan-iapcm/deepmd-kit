@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from deepmd.dpmodel.descriptor.hybrid import DescrptHybrid as DPDescrptHybrid
@@ -32,130 +32,122 @@ from ...seed import (
 )
 
 
-class TestDescrptHybrid(unittest.TestCase, TestCaseSingleFrameWithNlist):
-    def setUp(self) -> None:
+class TestDescrptHybrid(TestCaseSingleFrameWithNlist):
+    def setup_method(self) -> None:
         TestCaseSingleFrameWithNlist.setUp(self)
         self.device = env.DEVICE
 
-    def test_consistency(self) -> None:
+    @pytest.mark.parametrize("prec", ["float64"])  # precision
+    def test_consistency(self, prec) -> None:
         rng = np.random.default_rng(GLOBAL_SEED)
         _, _, nnei = self.nlist.shape
         davg = rng.normal(size=(self.nt, nnei, 4))
         dstd = rng.normal(size=(self.nt, nnei, 4))
         dstd = 0.1 + np.abs(dstd)
 
-        for prec in ["float64"]:
-            dtype = PRECISION_DICT[prec]
-            rtol, atol = get_tols(prec)
-            err_msg = f"prec={prec}"
+        dtype = PRECISION_DICT[prec]
+        rtol, atol = get_tols(prec)
+        err_msg = f"prec={prec}"
 
-            ddsub0 = DescrptSeA(
-                self.rcut,
-                self.rcut_smth,
-                self.sel,
-                precision=prec,
-                seed=GLOBAL_SEED,
-            )
-            ddsub1 = DescrptSeR(
-                self.rcut,
-                self.rcut_smth,
-                self.sel,
-                precision=prec,
-                seed=GLOBAL_SEED,
-            )
-            dd0 = DescrptHybrid(
-                list=[ddsub0, ddsub1],
-            ).to(self.device)
-            # set davg/dstd on sub-descriptors
-            dd0.descrpt_list[0].davg = torch.tensor(
-                davg, dtype=dtype, device=self.device
-            )
-            dd0.descrpt_list[0].dstd = torch.tensor(
-                dstd, dtype=dtype, device=self.device
-            )
-            dd0.descrpt_list[1].davg = torch.tensor(
-                davg[..., :1], dtype=dtype, device=self.device
-            )
-            dd0.descrpt_list[1].dstd = torch.tensor(
-                dstd[..., :1], dtype=dtype, device=self.device
-            )
-            rd0, _, _, _, _ = dd0(
-                torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
-                torch.tensor(self.atype_ext, dtype=int, device=self.device),
-                torch.tensor(self.nlist, dtype=int, device=self.device),
-            )
-            # serialization round-trip
-            dd1 = DescrptHybrid.deserialize(dd0.serialize())
-            rd1, _, _, _, _ = dd1(
-                torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
-                torch.tensor(self.atype_ext, dtype=int, device=self.device),
-                torch.tensor(self.nlist, dtype=int, device=self.device),
-            )
-            np.testing.assert_allclose(
-                rd0.detach().cpu().numpy(),
-                rd1.detach().cpu().numpy(),
-                rtol=rtol,
-                atol=atol,
-                err_msg=err_msg,
-            )
-            # dp impl
-            dd2 = DPDescrptHybrid.deserialize(dd0.serialize())
-            rd2, _, _, _, _ = dd2.call(
-                self.coord_ext,
-                self.atype_ext,
-                self.nlist,
-            )
-            np.testing.assert_allclose(
-                rd0.detach().cpu().numpy(),
-                rd2,
-                rtol=rtol,
-                atol=atol,
-                err_msg=err_msg,
-            )
+        ddsub0 = DescrptSeA(
+            self.rcut,
+            self.rcut_smth,
+            self.sel,
+            precision=prec,
+            seed=GLOBAL_SEED,
+        )
+        ddsub1 = DescrptSeR(
+            self.rcut,
+            self.rcut_smth,
+            self.sel,
+            precision=prec,
+            seed=GLOBAL_SEED,
+        )
+        dd0 = DescrptHybrid(
+            list=[ddsub0, ddsub1],
+        ).to(self.device)
+        # set davg/dstd on sub-descriptors
+        dd0.descrpt_list[0].davg = torch.tensor(davg, dtype=dtype, device=self.device)
+        dd0.descrpt_list[0].dstd = torch.tensor(dstd, dtype=dtype, device=self.device)
+        dd0.descrpt_list[1].davg = torch.tensor(
+            davg[..., :1], dtype=dtype, device=self.device
+        )
+        dd0.descrpt_list[1].dstd = torch.tensor(
+            dstd[..., :1], dtype=dtype, device=self.device
+        )
+        rd0, _, _, _, _ = dd0(
+            torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
+            torch.tensor(self.atype_ext, dtype=int, device=self.device),
+            torch.tensor(self.nlist, dtype=int, device=self.device),
+        )
+        # serialization round-trip
+        dd1 = DescrptHybrid.deserialize(dd0.serialize())
+        rd1, _, _, _, _ = dd1(
+            torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
+            torch.tensor(self.atype_ext, dtype=int, device=self.device),
+            torch.tensor(self.nlist, dtype=int, device=self.device),
+        )
+        np.testing.assert_allclose(
+            rd0.detach().cpu().numpy(),
+            rd1.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+            err_msg=err_msg,
+        )
+        # dp impl
+        dd2 = DPDescrptHybrid.deserialize(dd0.serialize())
+        rd2, _, _, _, _ = dd2.call(
+            self.coord_ext,
+            self.atype_ext,
+            self.nlist,
+        )
+        np.testing.assert_allclose(
+            rd0.detach().cpu().numpy(),
+            rd2,
+            rtol=rtol,
+            atol=atol,
+            err_msg=err_msg,
+        )
 
-    def test_exportable(self) -> None:
+    @pytest.mark.parametrize("prec", ["float64", "float32"])  # precision
+    def test_exportable(self, prec) -> None:
         rng = np.random.default_rng(GLOBAL_SEED)
         _, _, nnei = self.nlist.shape
         davg = rng.normal(size=(self.nt, nnei, 4))
         dstd = rng.normal(size=(self.nt, nnei, 4))
         dstd = 0.1 + np.abs(dstd)
 
-        for prec in ["float64", "float32"]:
-            dtype = PRECISION_DICT[prec]
+        dtype = PRECISION_DICT[prec]
 
-            ddsub0 = DescrptSeA(
-                self.rcut,
-                self.rcut_smth,
-                self.sel,
-                precision=prec,
-                seed=GLOBAL_SEED,
-            )
-            ddsub1 = DescrptSeR(
-                self.rcut,
-                self.rcut_smth,
-                self.sel,
-                precision=prec,
-                seed=GLOBAL_SEED,
-            )
-            dd0 = DescrptHybrid(
-                list=[ddsub0, ddsub1],
-            ).to(self.device)
-            dd0.descrpt_list[0].davg = torch.tensor(
-                davg, dtype=dtype, device=self.device
-            )
-            dd0.descrpt_list[0].dstd = torch.tensor(
-                dstd, dtype=dtype, device=self.device
-            )
-            dd0.descrpt_list[1].davg = torch.tensor(
-                davg[..., :1], dtype=dtype, device=self.device
-            )
-            dd0.descrpt_list[1].dstd = torch.tensor(
-                dstd[..., :1], dtype=dtype, device=self.device
-            )
-            dd0 = dd0.eval()
-            inputs = (
-                torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
-                torch.tensor(self.atype_ext, dtype=int, device=self.device),
-                torch.tensor(self.nlist, dtype=int, device=self.device),
-            )
-            torch.export.export(dd0, inputs)
+        ddsub0 = DescrptSeA(
+            self.rcut,
+            self.rcut_smth,
+            self.sel,
+            precision=prec,
+            seed=GLOBAL_SEED,
+        )
+        ddsub1 = DescrptSeR(
+            self.rcut,
+            self.rcut_smth,
+            self.sel,
+            precision=prec,
+            seed=GLOBAL_SEED,
+        )
+        dd0 = DescrptHybrid(
+            list=[ddsub0, ddsub1],
+        ).to(self.device)
+        dd0.descrpt_list[0].davg = torch.tensor(davg, dtype=dtype, device=self.device)
+        dd0.descrpt_list[0].dstd = torch.tensor(dstd, dtype=dtype, device=self.device)
+        dd0.descrpt_list[1].davg = torch.tensor(
+            davg[..., :1], dtype=dtype, device=self.device
+        )
+        dd0.descrpt_list[1].dstd = torch.tensor(
+            dstd[..., :1], dtype=dtype, device=self.device
+        )
+        dd0 = dd0.eval()
+        inputs = (
+            torch.tensor(self.coord_ext, dtype=dtype, device=self.device),
+            torch.tensor(self.atype_ext, dtype=int, device=self.device),
+            torch.tensor(self.nlist, dtype=int, device=self.device),
+        )
+        torch.export.export(dd0, inputs)
