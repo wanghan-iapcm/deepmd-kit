@@ -3,6 +3,9 @@
 import numpy as np
 import pytest
 import torch
+from torch.fx.experimental.proxy_tensor import (
+    make_fx,
+)
 
 from deepmd.dpmodel.descriptor.dpa2 import DescrptDPA2 as DPDescrptDPA2
 from deepmd.dpmodel.descriptor.dpa2 import (
@@ -228,3 +231,96 @@ class TestDescrptDPA2(TestCaseSingleFrameWithNlist):
             torch.tensor(self.mapping, dtype=int, device=self.device),
         )
         torch.export.export(dd0, inputs)
+
+    @pytest.mark.parametrize("prec", ["float64"])  # precision
+    def test_make_fx(self, prec) -> None:
+        rng = np.random.default_rng(GLOBAL_SEED)
+        nf, nloc, nnei = self.nlist.shape
+        davg = rng.normal(size=(self.nt, nnei, 4))
+        dstd = rng.normal(size=(self.nt, nnei, 4))
+        davg_2 = rng.normal(size=(self.nt, nnei // 2, 4))
+        dstd_2 = rng.normal(size=(self.nt, nnei // 2, 4))
+        dstd = 0.1 + np.abs(dstd)
+        dstd_2 = 0.1 + np.abs(dstd_2)
+
+        dtype = PRECISION_DICT[prec]
+        rtol, atol = get_tols(prec)
+        if prec == "float64":
+            atol = 1e-8
+
+        repinit = RepinitArgs(
+            rcut=self.rcut,
+            rcut_smth=self.rcut_smth,
+            nsel=self.sel_mix,
+            tebd_input_mode="concat",
+            set_davg_zero=True,
+        )
+        repformer = RepformerArgs(
+            rcut=self.rcut / 2,
+            rcut_smth=self.rcut_smth,
+            nsel=nnei // 2,
+            nlayers=3,
+            g1_dim=20,
+            g2_dim=10,
+            axis_neuron=4,
+            update_g1_has_conv=True,
+            update_g1_has_drrd=True,
+            update_g1_has_grrg=True,
+            update_g1_has_attn=False,
+            update_g2_has_g1g1=False,
+            update_g2_has_attn=True,
+            update_h2=False,
+            attn1_hidden=20,
+            attn1_nhead=2,
+            attn2_hidden=10,
+            attn2_nhead=2,
+            attn2_has_gate=True,
+            update_style="res_avg",
+            set_davg_zero=True,
+            use_sqrt_nnei=True,
+            g1_out_conv=True,
+            g1_out_mlp=True,
+        )
+
+        dd0 = DescrptDPA2(
+            self.nt,
+            repinit=repinit,
+            repformer=repformer,
+            smooth=True,
+            exclude_types=[],
+            add_tebd_to_repinit_out=False,
+            precision=prec,
+            seed=GLOBAL_SEED,
+        ).to(self.device)
+
+        dd0.repinit.mean = torch.tensor(davg, dtype=dtype, device=self.device)
+        dd0.repinit.stddev = torch.tensor(dstd, dtype=dtype, device=self.device)
+        dd0.repformers.mean = torch.tensor(davg_2, dtype=dtype, device=self.device)
+        dd0.repformers.stddev = torch.tensor(dstd_2, dtype=dtype, device=self.device)
+        dd0 = dd0.eval()
+        coord_ext = torch.tensor(self.coord_ext, dtype=dtype, device=self.device)
+        atype_ext = torch.tensor(self.atype_ext, dtype=int, device=self.device)
+        nlist = torch.tensor(self.nlist, dtype=int, device=self.device)
+        mapping = torch.tensor(self.mapping, dtype=int, device=self.device)
+
+        def fn(coord_ext, atype_ext, nlist, mapping):
+            coord_ext = coord_ext.detach().requires_grad_(True)
+            rd = dd0(coord_ext, atype_ext, nlist, mapping)[0]
+            grad = torch.autograd.grad(rd.sum(), coord_ext, create_graph=False)[0]
+            return rd, grad
+
+        rd_eager, grad_eager = fn(coord_ext, atype_ext, nlist, mapping)
+        traced = make_fx(fn)(coord_ext, atype_ext, nlist, mapping)
+        rd_traced, grad_traced = traced(coord_ext, atype_ext, nlist, mapping)
+        np.testing.assert_allclose(
+            rd_eager.detach().cpu().numpy(),
+            rd_traced.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+        )
+        np.testing.assert_allclose(
+            grad_eager.detach().cpu().numpy(),
+            grad_traced.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+        )

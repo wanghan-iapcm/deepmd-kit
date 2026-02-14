@@ -3,6 +3,9 @@
 import numpy as np
 import pytest
 import torch
+from torch.fx.experimental.proxy_tensor import (
+    make_fx,
+)
 
 from deepmd.dpmodel.descriptor.dpa1 import DescrptDPA1 as DPDescrptDPA1
 from deepmd.pt_expt.descriptor.dpa1 import (
@@ -128,3 +131,51 @@ class TestDescrptDPA1(TestCaseSingleFrameWithNlist):
             torch.tensor(self.nlist, dtype=int, device=self.device),
         )
         torch.export.export(dd0, inputs)
+
+    @pytest.mark.parametrize("prec", ["float64"])  # precision
+    def test_make_fx(self, prec) -> None:
+        rng = np.random.default_rng(GLOBAL_SEED)
+        _, _, nnei = self.nlist.shape
+        davg = rng.normal(size=(self.nt, nnei, 4))
+        dstd = rng.normal(size=(self.nt, nnei, 4))
+        dstd = 0.1 + np.abs(dstd)
+
+        dtype = PRECISION_DICT[prec]
+        rtol, atol = get_tols(prec)
+        dd0 = DescrptDPA1(
+            self.rcut,
+            self.rcut_smth,
+            self.sel_mix,
+            self.nt,
+            attn_layer=2,
+            precision=prec,
+            seed=GLOBAL_SEED,
+        ).to(self.device)
+        dd0.se_atten.mean = torch.tensor(davg, dtype=dtype, device=self.device)
+        dd0.se_atten.stddev = torch.tensor(dstd, dtype=dtype, device=self.device)
+        dd0 = dd0.eval()
+        coord_ext = torch.tensor(self.coord_ext, dtype=dtype, device=self.device)
+        atype_ext = torch.tensor(self.atype_ext, dtype=int, device=self.device)
+        nlist = torch.tensor(self.nlist, dtype=int, device=self.device)
+
+        def fn(coord_ext, atype_ext, nlist):
+            coord_ext = coord_ext.detach().requires_grad_(True)
+            rd = dd0(coord_ext, atype_ext, nlist)[0]
+            grad = torch.autograd.grad(rd.sum(), coord_ext, create_graph=False)[0]
+            return rd, grad
+
+        rd_eager, grad_eager = fn(coord_ext, atype_ext, nlist)
+        traced = make_fx(fn)(coord_ext, atype_ext, nlist)
+        rd_traced, grad_traced = traced(coord_ext, atype_ext, nlist)
+        np.testing.assert_allclose(
+            rd_eager.detach().cpu().numpy(),
+            rd_traced.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+        )
+        np.testing.assert_allclose(
+            grad_eager.detach().cpu().numpy(),
+            grad_traced.detach().cpu().numpy(),
+            rtol=rtol,
+            atol=atol,
+        )
