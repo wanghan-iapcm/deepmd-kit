@@ -19,6 +19,7 @@ from ..common import (
     INSTALLED_JAX,
     INSTALLED_PD,
     INSTALLED_PT,
+    INSTALLED_PT_EXPT,
     CommonTest,
     parameterized,
 )
@@ -41,6 +42,10 @@ if INSTALLED_PD:
 else:
     DescrptDPA3PD = None
 
+if INSTALLED_PT_EXPT:
+    from deepmd.pt_expt.descriptor.dpa3 import DescrptDPA3 as DescrptDPA3PTExpt
+else:
+    DescrptDPA3PTExpt = None
 if INSTALLED_ARRAY_API_STRICT:
     from ...array_api_strict.descriptor.dpa3 import DescrptDPA3 as DescrptDPA3Strict
 else:
@@ -215,10 +220,12 @@ class TestDPA3(CommonTest, DescriptorTest, unittest.TestCase):
 
     skip_jax = not INSTALLED_JAX
     skip_array_api_strict = not INSTALLED_ARRAY_API_STRICT
+    skip_pt_expt = not INSTALLED_PT_EXPT
 
     tf_class = DescrptDPA3TF
     dp_class = DescrptDPA3DP
     pt_class = DescrptDPA3PT
+    pt_expt_class = DescrptDPA3PTExpt
     pd_class = DescrptDPA3PD
     jax_class = DescrptDPA3JAX
     array_api_strict_class = DescrptDPA3Strict
@@ -317,6 +324,16 @@ class TestDPA3(CommonTest, DescriptorTest, unittest.TestCase):
     def eval_jax(self, jax_obj: Any) -> Any:
         return self.eval_jax_descriptor(
             jax_obj,
+            self.natoms,
+            self.coords,
+            self.atype,
+            self.box,
+            mixed_types=True,
+        )
+
+    def eval_pt_expt(self, pt_expt_obj: Any) -> Any:
+        return self.eval_pt_expt_descriptor(
+            pt_expt_obj,
             self.natoms,
             self.coords,
             self.atype,
