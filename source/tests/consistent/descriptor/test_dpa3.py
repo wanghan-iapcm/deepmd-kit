@@ -24,6 +24,7 @@ from ..common import (
     parameterized,
 )
 from .common import (
+    DescriptorAPITest,
     DescriptorTest,
 )
 
@@ -405,3 +406,87 @@ class TestDPA3(CommonTest, DescriptorTest, unittest.TestCase):
             return 1e-4
         else:
             raise ValueError(f"Unknown precision: {precision}")
+
+
+@parameterized(
+    ("const",),  # update_residual_init
+    ([], [[0, 1]]),  # exclude_types
+    (True,),  # update_angle
+    (0, 1),  # a_compress_rate
+    (1, 2),  # a_compress_e_rate
+    (True,),  # a_compress_use_split
+    (True, False),  # optim_update
+    (True, False),  # edge_init_use_dist
+    (True, False),  # use_exp_switch
+    (True, False),  # use_dynamic_sel
+    (True, False),  # use_loc_mapping
+    (0.3, 0.0),  # fix_stat_std
+    (1,),  # n_multi_edge_message
+    ("float64",),  # precision
+)
+class TestDPA3DescriptorAPI(DescriptorAPITest, unittest.TestCase):
+    """Test consistency of BaseDescriptor API methods across backends."""
+
+    dp_class = DescrptDPA3DP
+    pt_class = DescrptDPA3PT
+    pt_expt_class = DescrptDPA3PTExpt
+    args = descrpt_dpa3_args().append(Argument("ntypes", int, optional=False))
+
+    @property
+    def data(self) -> dict:
+        (
+            update_residual_init,
+            exclude_types,
+            update_angle,
+            a_compress_rate,
+            a_compress_e_rate,
+            a_compress_use_split,
+            optim_update,
+            edge_init_use_dist,
+            use_exp_switch,
+            use_dynamic_sel,
+            use_loc_mapping,
+            fix_stat_std,
+            n_multi_edge_message,
+            precision,
+        ) = self.param
+        return {
+            "ntypes": self.ntypes,
+            # kwargs for repinit
+            "repflow": RepFlowArgs(
+                **{
+                    "n_dim": 20,
+                    "e_dim": 10,
+                    "a_dim": 8,
+                    "nlayers": 3,
+                    "e_rcut": 6.0,
+                    "e_rcut_smth": 5.0,
+                    "e_sel": 10,
+                    "a_rcut": 4.0,
+                    "a_rcut_smth": 3.5,
+                    "a_sel": 8,
+                    "a_compress_rate": a_compress_rate,
+                    "a_compress_e_rate": a_compress_e_rate,
+                    "a_compress_use_split": a_compress_use_split,
+                    "optim_update": optim_update,
+                    "edge_init_use_dist": edge_init_use_dist,
+                    "use_exp_switch": use_exp_switch,
+                    "use_dynamic_sel": use_dynamic_sel,
+                    "smooth_edge_update": True,
+                    "fix_stat_std": fix_stat_std,
+                    "n_multi_edge_message": n_multi_edge_message,
+                    "axis_neuron": 4,
+                    "update_angle": update_angle,
+                    "update_style": "res_residual",
+                    "update_residual": 0.1,
+                    "update_residual_init": update_residual_init,
+                }
+            ),
+            # kwargs for descriptor
+            "activation_function": "relu",
+            "precision": precision,
+            "exclude_types": exclude_types,
+            "env_protection": 0.0,
+            "use_loc_mapping": use_loc_mapping,
+            "trainable": False,
+        }

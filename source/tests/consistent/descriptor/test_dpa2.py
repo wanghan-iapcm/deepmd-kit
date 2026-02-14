@@ -24,6 +24,7 @@ from ..common import (
     parameterized,
 )
 from .common import (
+    DescriptorAPITest,
     DescriptorTest,
 )
 
@@ -551,3 +552,141 @@ class TestDPA2(CommonTest, DescriptorTest, unittest.TestCase):
             return 1e-4
         else:
             raise ValueError(f"Unknown precision: {precision}")
+
+
+@parameterized(
+    ("concat", "strip"),  # repinit_tebd_input_mode
+    (True,),  # repinit_set_davg_zero
+    (False,),  # repinit_type_one_side
+    (True, False),  # repinit_use_three_body
+    (True, False),  # repformer_direct_dist
+    (True,),  # repformer_update_g1_has_conv
+    (True,),  # repformer_update_g1_has_drrd
+    (True,),  # repformer_update_g1_has_grrg
+    (True,),  # repformer_update_g1_has_attn
+    (True,),  # repformer_update_g2_has_g1g1
+    (True,),  # repformer_update_g2_has_attn
+    (False,),  # repformer_update_h2
+    (True,),  # repformer_attn2_has_gate
+    ("res_avg", "res_residual"),  # repformer_update_style
+    ("norm", "const"),  # repformer_update_residual_init
+    (True,),  # repformer_set_davg_zero
+    (True,),  # repformer_trainable_ln
+    (1e-5,),  # repformer_ln_eps
+    (True,),  # repformer_use_sqrt_nnei
+    (True,),  # repformer_g1_out_conv
+    (True,),  # repformer_g1_out_mlp
+    (True, False),  # smooth
+    ([], [[0, 1]]),  # exclude_types
+    ("float64",),  # precision
+    (True, False),  # add_tebd_to_repinit_out
+    (True, False),  # use_econf_tebd
+    (False,),  # use_tebd_bias
+)
+class TestDPA2DescriptorAPI(DescriptorAPITest, unittest.TestCase):
+    """Test consistency of BaseDescriptor API methods across backends."""
+
+    dp_class = DescrptDPA2DP
+    pt_class = DescrptDPA2PT
+    pt_expt_class = DescrptDPA2PTExpt
+    args = descrpt_dpa2_args().append(Argument("ntypes", int, optional=False))
+
+    @property
+    def data(self) -> dict:
+        (
+            repinit_tebd_input_mode,
+            repinit_set_davg_zero,
+            repinit_type_one_side,
+            repinit_use_three_body,
+            repformer_update_g1_has_conv,
+            repformer_direct_dist,
+            repformer_update_g1_has_drrd,
+            repformer_update_g1_has_grrg,
+            repformer_update_g1_has_attn,
+            repformer_update_g2_has_g1g1,
+            repformer_update_g2_has_attn,
+            repformer_update_h2,
+            repformer_attn2_has_gate,
+            repformer_update_style,
+            repformer_update_residual_init,
+            repformer_set_davg_zero,
+            repformer_trainable_ln,
+            repformer_ln_eps,
+            repformer_use_sqrt_nnei,
+            repformer_g1_out_conv,
+            repformer_g1_out_mlp,
+            smooth,
+            exclude_types,
+            precision,
+            add_tebd_to_repinit_out,
+            use_econf_tebd,
+            use_tebd_bias,
+        ) = self.param
+        return {
+            "ntypes": self.ntypes,
+            # kwargs for repinit
+            "repinit": RepinitArgs(
+                **{
+                    "rcut": 6.00,
+                    "rcut_smth": 5.80,
+                    "nsel": 10,
+                    "neuron": [6, 12, 24],
+                    "axis_neuron": 3,
+                    "tebd_dim": 4,
+                    "tebd_input_mode": repinit_tebd_input_mode,
+                    "set_davg_zero": repinit_set_davg_zero,
+                    "activation_function": "relu",
+                    "type_one_side": repinit_type_one_side,
+                    "use_three_body": repinit_use_three_body,
+                    "three_body_sel": 8,
+                    "three_body_rcut": 4.0,
+                    "three_body_rcut_smth": 3.5,
+                }
+            ),
+            # kwargs for repformer
+            "repformer": RepformerArgs(
+                **{
+                    "rcut": 4.00,
+                    "rcut_smth": 3.50,
+                    "nsel": 8,
+                    "nlayers": 3,
+                    "g1_dim": 20,
+                    "g2_dim": 10,
+                    "axis_neuron": 3,
+                    "direct_dist": repformer_direct_dist,
+                    "update_g1_has_conv": repformer_update_g1_has_conv,
+                    "update_g1_has_drrd": repformer_update_g1_has_drrd,
+                    "update_g1_has_grrg": repformer_update_g1_has_grrg,
+                    "update_g1_has_attn": repformer_update_g1_has_attn,
+                    "update_g2_has_g1g1": repformer_update_g2_has_g1g1,
+                    "update_g2_has_attn": repformer_update_g2_has_attn,
+                    "update_h2": repformer_update_h2,
+                    "attn1_hidden": 12,
+                    "attn1_nhead": 2,
+                    "attn2_hidden": 10,
+                    "attn2_nhead": 2,
+                    "attn2_has_gate": repformer_attn2_has_gate,
+                    "activation_function": "relu",
+                    "update_style": repformer_update_style,
+                    "update_residual": 0.001,
+                    "update_residual_init": repformer_update_residual_init,
+                    "set_davg_zero": True,
+                    "trainable_ln": repformer_trainable_ln,
+                    "ln_eps": repformer_ln_eps,
+                    "use_sqrt_nnei": repformer_use_sqrt_nnei,
+                    "g1_out_conv": repformer_g1_out_conv,
+                    "g1_out_mlp": repformer_g1_out_mlp,
+                }
+            ),
+            # kwargs for descriptor
+            "concat_output_tebd": True,
+            "precision": precision,
+            "smooth": smooth,
+            "exclude_types": exclude_types,
+            "env_protection": 0.0,
+            "trainable": False,
+            "use_econf_tebd": use_econf_tebd,
+            "use_tebd_bias": use_tebd_bias,
+            "type_map": ["O", "H"] if use_econf_tebd else None,
+            "add_tebd_to_repinit_out": add_tebd_to_repinit_out,
+        }

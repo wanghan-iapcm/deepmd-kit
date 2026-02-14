@@ -20,6 +20,7 @@ from ..common import (
     CommonTest,
 )
 from .common import (
+    DescriptorAPITest,
     DescriptorTest,
 )
 
@@ -187,3 +188,44 @@ class TestHybrid(CommonTest, DescriptorTest, unittest.TestCase):
 
     def extract_ret(self, ret: Any, backend) -> tuple[np.ndarray, ...]:
         return (ret[0], ret[1])
+
+
+class TestHybridDescriptorAPI(DescriptorAPITest, unittest.TestCase):
+    """Test consistency of BaseDescriptor API methods across backends."""
+
+    dp_class = DescrptHybridDP
+    pt_class = DescrptHybridPT
+    pt_expt_class = DescrptHybridPTExpt
+    args = descrpt_hybrid_args()
+
+    @property
+    def data(self) -> dict:
+        return {
+            "list": [
+                {
+                    "type": "se_e2_r",
+                    "sel": [10, 10],
+                    "rcut_smth": 5.80,
+                    "rcut": 6.00,
+                    "neuron": [6, 12, 24],
+                    "resnet_dt": False,
+                    "type_one_side": True,
+                    "precision": "float64",
+                    "seed": 20240229,
+                    "activation_function": "relu",
+                },
+                {
+                    "type": "se_e2_a",
+                    "sel": [9, 11],
+                    "rcut_smth": 2.80,
+                    "rcut": 3.00,
+                    "neuron": [6, 12, 24],
+                    "axis_neuron": 3,
+                    "resnet_dt": True,
+                    "type_one_side": True,
+                    "precision": "float64",
+                    "seed": 20240229,
+                    "activation_function": "relu",
+                },
+            ]
+        }

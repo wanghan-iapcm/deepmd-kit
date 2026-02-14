@@ -21,6 +21,7 @@ from ..common import (
     parameterized,
 )
 from .common import (
+    DescriptorAPITest,
     DescriptorTest,
 )
 
@@ -261,3 +262,39 @@ class TestSeT(CommonTest, DescriptorTest, unittest.TestCase):
             return 1e-4
         else:
             raise ValueError(f"Unknown precision: {precision}")
+
+
+@parameterized(
+    (True, False),  # resnet_dt
+    ([], [[0, 1]]),  # excluded_types
+    ("float64",),  # precision
+    (0.0, 1e-8, 1e-2),  # env_protection
+)
+class TestSeTDescriptorAPI(DescriptorAPITest, unittest.TestCase):
+    """Test consistency of BaseDescriptor API methods across backends."""
+
+    dp_class = DescrptSeTDP
+    pt_class = DescrptSeTPT
+    pt_expt_class = DescrptSeTPTExpt
+    args = descrpt_se_t_args()
+
+    @property
+    def data(self) -> dict:
+        (
+            resnet_dt,
+            excluded_types,
+            precision,
+            env_protection,
+        ) = self.param
+        return {
+            "sel": [9, 10],
+            "rcut_smth": 5.80,
+            "rcut": 6.00,
+            "neuron": [6, 12, 24],
+            "resnet_dt": resnet_dt,
+            "exclude_types": excluded_types,
+            "env_protection": env_protection,
+            "precision": precision,
+            "seed": 1145141919810,
+            "activation_function": "relu",
+        }
