@@ -1671,6 +1671,157 @@ def dpa3_repflow_args() -> list[Argument]:
     ]
 
 
+@descrpt_args_plugin.register("hgnn", doc=doc_only_pt_supported)
+def descrpt_hgnn_args() -> list[Argument]:
+    doc_hgnn = "The arguments used to initialize the HGNN block."
+    doc_concat_output_tebd = (
+        "Whether to concat type embedding at the output of the descriptor."
+    )
+    doc_activation_function = f"The activation function in the embedding net. Supported activation functions are {list_to_doc(ACTIVATION_FN_DICT.keys())}."
+    doc_precision = f"The precision of the embedding net parameters, supported options are {list_to_doc(PRECISION_DICT.keys())} Default follows the interface precision."
+    doc_exclude_types = "The excluded pairs of types which have no interaction with each other. For example, `[[0, 1]]` means no interaction between type 0 and type 1."
+    doc_env_protection = "Protection parameter to prevent division by zero errors during environment matrix calculations."
+    doc_trainable = "If the parameters in the embedding net is trainable."
+    doc_seed = "Random seed for parameter initialization."
+    doc_use_econf_tebd = "Whether to use electronic configuration type embedding."
+    doc_use_tebd_bias = "Whether to use bias in the type embedding layer."
+    return [
+        Argument("hgnn", dict, hgnn_block_args(), doc=doc_hgnn),
+        Argument(
+            "concat_output_tebd",
+            bool,
+            optional=True,
+            default=False,
+            doc=doc_concat_output_tebd,
+        ),
+        Argument(
+            "activation_function",
+            str,
+            optional=True,
+            default="silu",
+            doc=doc_activation_function,
+        ),
+        Argument("precision", str, optional=True, default="default", doc=doc_precision),
+        Argument(
+            "exclude_types",
+            list[list[int]],
+            optional=True,
+            default=[],
+            doc=doc_exclude_types,
+        ),
+        Argument(
+            "env_protection",
+            float,
+            optional=True,
+            default=0.0,
+            doc=doc_only_pt_supported + doc_env_protection,
+        ),
+        Argument("trainable", bool, optional=True, default=True, doc=doc_trainable),
+        Argument("seed", [int, None], optional=True, doc=doc_seed),
+        Argument(
+            "use_econf_tebd",
+            bool,
+            optional=True,
+            default=False,
+            doc=doc_only_pt_supported + doc_use_econf_tebd,
+        ),
+        Argument(
+            "use_tebd_bias",
+            bool,
+            optional=True,
+            default=False,
+            doc=doc_use_tebd_bias,
+        ),
+    ]
+
+
+def hgnn_block_args() -> list[Argument]:
+    doc_n_dim = "The dimension of node representation."
+    doc_e_dim = "The dimension of order-2 (edge) hyperedge representation."
+    doc_a_dim = "The dimension of order-3 (angle) hyperedge representation."
+    doc_nlayers = "The number of HGNN layers."
+    doc_e_rcut = "The edge cut-off radius."
+    doc_e_rcut_smth = "Where to start smoothing for edge."
+    doc_e_sel = "Maximally possible number of selected edge neighbors."
+    doc_a_rcut = "The angle cut-off radius."
+    doc_a_rcut_smth = "Where to start smoothing for angle."
+    doc_a_sel = "Maximally possible number of selected angle neighbors."
+    doc_axis_neuron = "The number of dimension of submatrix in the symmetrization ops."
+    doc_fix_stat_std = (
+        "If non-zero (default is 0.3), use this constant as the normalization standard deviation "
+        "instead of computing it from data statistics."
+    )
+    doc_update_style = (
+        "Style to update a representation. "
+        "Supported options are: 'res_avg', 'res_incr', 'res_residual'."
+    )
+    doc_update_residual = (
+        "When update using residual mode, the initial std of residual vector weights."
+    )
+    doc_update_residual_init = (
+        "When update using residual mode, "
+        "the initialization mode of residual vector weights. "
+        "Supported modes are: ['norm', 'const']."
+    )
+    doc_use_exp_switch = (
+        "Whether to use an exponential switch function instead of a polynomial one."
+    )
+    return [
+        Argument("n_dim", int, optional=True, default=128, doc=doc_n_dim),
+        Argument("e_dim", int, optional=True, default=64, doc=doc_e_dim),
+        Argument("a_dim", int, optional=True, default=64, doc=doc_a_dim),
+        Argument("nlayers", int, optional=True, default=6, doc=doc_nlayers),
+        Argument("e_rcut", float, doc=doc_e_rcut),
+        Argument("e_rcut_smth", float, doc=doc_e_rcut_smth),
+        Argument("e_sel", [int, str], doc=doc_e_sel),
+        Argument("a_rcut", float, doc=doc_a_rcut),
+        Argument("a_rcut_smth", float, doc=doc_a_rcut_smth),
+        Argument("a_sel", [int, str], doc=doc_a_sel),
+        Argument(
+            "axis_neuron",
+            int,
+            optional=True,
+            default=4,
+            doc=doc_axis_neuron,
+        ),
+        Argument(
+            "fix_stat_std",
+            float,
+            optional=True,
+            default=0.3,
+            doc=doc_fix_stat_std,
+        ),
+        Argument(
+            "update_style",
+            str,
+            optional=True,
+            default="res_residual",
+            doc=doc_update_style,
+        ),
+        Argument(
+            "update_residual",
+            float,
+            optional=True,
+            default=0.1,
+            doc=doc_update_residual,
+        ),
+        Argument(
+            "update_residual_init",
+            str,
+            optional=True,
+            default="const",
+            doc=doc_update_residual_init,
+        ),
+        Argument(
+            "use_exp_switch",
+            bool,
+            optional=True,
+            default=False,
+            doc=doc_use_exp_switch,
+        ),
+    ]
+
+
 @descrpt_args_plugin.register(
     "se_a_ebd_v2", alias=["se_a_tpe_v2"], doc=doc_only_tf_supported
 )

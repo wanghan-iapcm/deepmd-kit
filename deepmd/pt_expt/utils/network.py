@@ -184,6 +184,18 @@ def _torch_activation(x: torch.Tensor, name: str) -> torch.Tensor:
         return torch.nn.functional.silu(x)
     elif name in ("none", "linear"):
         return x
+    elif name.startswith("silut") or name.startswith("custom_silu"):
+        import math
+
+        threshold = float(name.split(":")[-1]) if ":" in name else 3.0
+        sig_t = 1.0 / (1.0 + math.exp(-threshold))
+        slope = sig_t + threshold * sig_t * (1.0 - sig_t)
+        const = threshold * sig_t
+        return torch.where(
+            x < threshold,
+            torch.nn.functional.silu(x),
+            torch.tanh(slope * (x - threshold)) + const,
+        )
     else:
         raise NotImplementedError(name)
 

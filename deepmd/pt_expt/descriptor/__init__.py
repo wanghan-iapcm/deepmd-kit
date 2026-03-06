@@ -13,6 +13,9 @@ from .dpa2 import (
 from .dpa3 import (
     DescrptDPA3,
 )
+from .hgnn import (
+    DescrptHGNN,
+)
 from .hybrid import (
     DescrptHybrid,
 )
@@ -37,6 +40,7 @@ __all__ = [
     "DescrptDPA1",
     "DescrptDPA2",
     "DescrptDPA3",
+    "DescrptHGNN",
     "DescrptHybrid",
     "DescrptSeA",
     "DescrptSeAttenV2",
