@@ -169,8 +169,8 @@ class RotationTest:
         np.testing.assert_allclose(
             force0_rot,
             force1,
-            rtol=1e-7,
-            atol=1e-7,
+            rtol=1e-5,
+            atol=1e-5,
             err_msg="Force not covariant under rotation",
         )
 

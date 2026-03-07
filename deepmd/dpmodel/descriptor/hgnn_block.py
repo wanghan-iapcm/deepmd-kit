@@ -371,21 +371,13 @@ class HGNNLayer(NativeOP):
         # phi_3: process each peripheral + distance (for angle neighbors only)
         # nf x nloc x a_sel x n_dim
         a_nei_node_ebd = nei_node_ebd[:, :, : self.a_sel, :]
-        # Apply angle mask to neighbor embeddings
-        a_nei_node_ebd = xp.where(
-            xp.expand_dims(a_nlist_mask, axis=-1),
-            a_nei_node_ebd,
-            xp.zeros_like(a_nei_node_ebd),
-        )
+        # Smooth weighting by a_sw instead of hard masking for cutoff smoothness
+        a_nei_node_ebd = a_nei_node_ebd * xp.expand_dims(a_sw, axis=-1)
         phi3_parts = [a_nei_node_ebd, a_edge_input]
         if self.use_cross_order_v2e:
             # include edge features of each arm (center→peripheral)
             a_edge_ebd = edge_ebd[:, :, : self.a_sel, :]
-            a_edge_ebd = xp.where(
-                xp.expand_dims(a_nlist_mask, axis=-1),
-                a_edge_ebd,
-                xp.zeros_like(a_edge_ebd),
-            )
+            a_edge_ebd = a_edge_ebd * xp.expand_dims(a_sw, axis=-1)
             phi3_parts.append(a_edge_ebd)
         phi3_input = xp.concat(phi3_parts, axis=-1)
         # nf x nloc x a_sel x a_dim
