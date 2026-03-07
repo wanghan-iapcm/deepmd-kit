@@ -93,6 +93,10 @@ class HGNNArgs:
         Fixed standard deviation.
     use_exp_switch : bool
         Use exponential switch function.
+    use_hfea_v2e : bool
+        Include existing hyperedge features in V→E rho functions.
+    use_cross_order_v2e : bool
+        Include edge features in the angle V→E phi function (cross-order).
     """
 
     def __init__(
@@ -113,6 +117,8 @@ class HGNNArgs:
         update_residual_init: str = "const",
         fix_stat_std: float = 0.3,
         use_exp_switch: bool = False,
+        use_hfea_v2e: bool = False,
+        use_cross_order_v2e: bool = False,
     ) -> None:
         self.n_dim = n_dim
         self.e_dim = e_dim
@@ -130,6 +136,8 @@ class HGNNArgs:
         self.update_residual_init = update_residual_init
         self.fix_stat_std = fix_stat_std
         self.use_exp_switch = use_exp_switch
+        self.use_hfea_v2e = use_hfea_v2e
+        self.use_cross_order_v2e = use_cross_order_v2e
 
     def __getitem__(self, key: str) -> Any:
         if hasattr(self, key):
@@ -155,6 +163,8 @@ class HGNNArgs:
             "update_residual_init": self.update_residual_init,
             "fix_stat_std": self.fix_stat_std,
             "use_exp_switch": self.use_exp_switch,
+            "use_hfea_v2e": self.use_hfea_v2e,
+            "use_cross_order_v2e": self.use_cross_order_v2e,
         }
 
     @classmethod
@@ -253,6 +263,8 @@ class DescrptHGNN(NativeOP, BaseDescriptor):
             precision=precision,
             seed=child_seed(seed, 1),
             trainable=trainable,
+            use_hfea_v2e=self.hgnn_args.use_hfea_v2e,
+            use_cross_order_v2e=self.hgnn_args.use_cross_order_v2e,
         )
 
         self.use_econf_tebd = use_econf_tebd

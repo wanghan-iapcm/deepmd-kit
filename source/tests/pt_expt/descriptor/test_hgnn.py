@@ -38,7 +38,11 @@ class TestDescrptHGNN(TestCaseSingleFrameWithNlist):
         self.device = env.DEVICE
 
     @pytest.mark.parametrize("ruri", ["norm", "const"])  # update_residual_init
-    def test_consistency(self, ruri) -> None:
+    @pytest.mark.parametrize(
+        ("hfea", "cross"),
+        [(False, False), (True, True)],
+    )  # use_hfea_v2e, use_cross_order_v2e
+    def test_consistency(self, ruri, hfea, cross) -> None:
         rng = np.random.default_rng(GLOBAL_SEED)
         nf, nloc, nnei = self.nlist.shape
         davg = rng.normal(size=(self.nt, nnei, 4))
@@ -65,6 +69,8 @@ class TestDescrptHGNN(TestCaseSingleFrameWithNlist):
             axis_neuron=4,
             update_style="res_residual",
             update_residual_init=ruri,
+            use_hfea_v2e=hfea,
+            use_cross_order_v2e=cross,
         )
 
         dd0 = DescrptHGNN(
@@ -110,7 +116,11 @@ class TestDescrptHGNN(TestCaseSingleFrameWithNlist):
         )
 
     @pytest.mark.parametrize("prec", ["float64", "float32"])  # precision
-    def test_exportable(self, prec) -> None:
+    @pytest.mark.parametrize(
+        ("hfea", "cross"),
+        [(False, False), (True, True)],
+    )  # use_hfea_v2e, use_cross_order_v2e
+    def test_exportable(self, prec, hfea, cross) -> None:
         rng = np.random.default_rng(GLOBAL_SEED)
         nf, nloc, nnei = self.nlist.shape
         davg = rng.normal(size=(self.nt, nnei, 4))
@@ -133,6 +143,8 @@ class TestDescrptHGNN(TestCaseSingleFrameWithNlist):
             axis_neuron=4,
             update_style="res_residual",
             update_residual_init="const",
+            use_hfea_v2e=hfea,
+            use_cross_order_v2e=cross,
         )
 
         dd0 = DescrptHGNN(
@@ -156,7 +168,11 @@ class TestDescrptHGNN(TestCaseSingleFrameWithNlist):
 
     @pytest.mark.parametrize("ruri", ["norm", "const"])  # update_residual_init
     @pytest.mark.parametrize("prec", ["float64"])  # precision
-    def test_make_fx(self, ruri, prec) -> None:
+    @pytest.mark.parametrize(
+        ("hfea", "cross"),
+        [(False, False), (True, True)],
+    )  # use_hfea_v2e, use_cross_order_v2e
+    def test_make_fx(self, ruri, prec, hfea, cross) -> None:
         rng = np.random.default_rng(GLOBAL_SEED)
         nf, nloc, nnei = self.nlist.shape
         davg = rng.normal(size=(self.nt, nnei, 4))
@@ -182,6 +198,8 @@ class TestDescrptHGNN(TestCaseSingleFrameWithNlist):
             axis_neuron=4,
             update_style="res_residual",
             update_residual_init=ruri,
+            use_hfea_v2e=hfea,
+            use_cross_order_v2e=cross,
         )
 
         dd0 = DescrptHGNN(

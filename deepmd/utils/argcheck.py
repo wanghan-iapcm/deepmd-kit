@@ -1766,6 +1766,18 @@ def hgnn_block_args() -> list[Argument]:
     doc_use_exp_switch = (
         "Whether to use an exponential switch function instead of a polynomial one."
     )
+    doc_use_hfea_v2e = (
+        "Whether to include existing hyperedge features in V→E rho functions. "
+        "When enabled, rho_2 receives the current edge embedding and rho_3 "
+        "receives the current angle embedding as additional inputs, allowing "
+        "iterative refinement of hyperedge representations across layers."
+    )
+    doc_use_cross_order_v2e = (
+        "Whether to include edge features in the angle V→E phi function "
+        "(cross-order interaction). When enabled, phi_3 receives the edge "
+        "embedding of each center-peripheral arm as additional input, coupling "
+        "order-2 and order-3 representations."
+    )
     return [
         Argument("n_dim", int, optional=True, default=128, doc=doc_n_dim),
         Argument("e_dim", int, optional=True, default=64, doc=doc_e_dim),
@@ -1818,6 +1830,20 @@ def hgnn_block_args() -> list[Argument]:
             optional=True,
             default=False,
             doc=doc_use_exp_switch,
+        ),
+        Argument(
+            "use_hfea_v2e",
+            bool,
+            optional=True,
+            default=False,
+            doc=doc_use_hfea_v2e,
+        ),
+        Argument(
+            "use_cross_order_v2e",
+            bool,
+            optional=True,
+            default=False,
+            doc=doc_use_cross_order_v2e,
         ),
     ]
 

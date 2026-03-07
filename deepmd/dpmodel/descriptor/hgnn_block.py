@@ -121,6 +121,8 @@ class HGNNLayer(NativeOP):
         precision: str = "float64",
         seed: int | list[int] | None = None,
         trainable: bool = True,
+        use_hfea_v2e: bool = False,
+        use_cross_order_v2e: bool = False,
     ) -> None:
         super().__init__()
         self.epsilon = 1e-4
@@ -146,6 +148,8 @@ class HGNNLayer(NativeOP):
         self.precision = precision
         self.seed = seed
         self.prec = PRECISION_DICT[precision]
+        self.use_hfea_v2e = use_hfea_v2e
+        self.use_cross_order_v2e = use_cross_order_v2e
 
         assert update_residual_init in [
             "norm",
@@ -156,7 +160,7 @@ class HGNNLayer(NativeOP):
         self.e_residual = []
         self.a_residual = []
 
-        # -- V→E order-2: phi_2(x_nei, d) -> rho_2(x_center, phi_2_out) --
+        # -- V→E order-2: phi_2(x_nei, d) -> rho_2(x_center, phi_2_out[, e_prev]) --
         self.phi_2 = NativeLayer(
             n_dim + 1,
             e_dim,
@@ -164,8 +168,9 @@ class HGNNLayer(NativeOP):
             seed=child_seed(seed, 0),
             trainable=trainable,
         )
+        rho_2_in = n_dim + e_dim + (e_dim if use_hfea_v2e else 0)
         self.rho_2 = NativeLayer(
-            n_dim + e_dim,
+            rho_2_in,
             e_dim,
             precision=precision,
             seed=child_seed(seed, 1),
@@ -183,16 +188,18 @@ class HGNNLayer(NativeOP):
                 )
             )
 
-        # -- V→E order-3: phi_3(x_nei, d) -> rho_3(x_center, sum, cosine) --
+        # -- V→E order-3: phi_3(x_nei, d[, e]) -> rho_3(x_center, sum, cosine[, a_prev]) --
+        phi_3_in = n_dim + 1 + (e_dim if use_cross_order_v2e else 0)
         self.phi_3 = NativeLayer(
-            n_dim + 1,
+            phi_3_in,
             a_dim,
             precision=precision,
             seed=child_seed(seed, 3),
             trainable=trainable,
         )
+        rho_3_in = n_dim + a_dim + 1 + (a_dim if use_hfea_v2e else 0)
         self.rho_3 = NativeLayer(
-            n_dim + a_dim + 1,
+            rho_3_in,
             a_dim,
             precision=precision,
             seed=child_seed(seed, 4),
@@ -345,13 +352,15 @@ class HGNNLayer(NativeOP):
         # nf x nloc x nnei x e_dim
         periph_msg = self.act(self.phi_2(phi2_input))
 
-        # rho_2: combine center + peripheral message
+        # rho_2: combine center + peripheral message [+ existing edge feature]
         # nf x nloc x 1 x n_dim -> nf x nloc x nnei x n_dim
         node_tiled = xp.broadcast_to(
             node_ebd[:, :, xp.newaxis, :], (*periph_msg.shape[:-1], self.n_dim)
         )
-        # nf x nloc x nnei x (n_dim + e_dim)
-        rho2_input = xp.concat([node_tiled, periph_msg], axis=-1)
+        rho2_parts = [node_tiled, periph_msg]
+        if self.use_hfea_v2e:
+            rho2_parts.append(edge_ebd)
+        rho2_input = xp.concat(rho2_parts, axis=-1)
         # nf x nloc x nnei x e_dim
         he2_update = self.act(self.rho_2(rho2_input))
         e_update_list.append(he2_update)
@@ -368,8 +377,17 @@ class HGNNLayer(NativeOP):
             a_nei_node_ebd,
             xp.zeros_like(a_nei_node_ebd),
         )
-        # nf x nloc x a_sel x (n_dim + 1)
-        phi3_input = xp.concat([a_nei_node_ebd, a_edge_input], axis=-1)
+        phi3_parts = [a_nei_node_ebd, a_edge_input]
+        if self.use_cross_order_v2e:
+            # include edge features of each arm (center→peripheral)
+            a_edge_ebd = edge_ebd[:, :, : self.a_sel, :]
+            a_edge_ebd = xp.where(
+                xp.expand_dims(a_nlist_mask, axis=-1),
+                a_edge_ebd,
+                xp.zeros_like(a_edge_ebd),
+            )
+            phi3_parts.append(a_edge_ebd)
+        phi3_input = xp.concat(phi3_parts, axis=-1)
         # nf x nloc x a_sel x a_dim
         periph_phi3 = self.act(self.phi_3(phi3_input))
 
@@ -391,8 +409,10 @@ class HGNNLayer(NativeOP):
         # nf x nloc x a_sel x a_sel x 1
         cos_input = cosine_ij[:, :, :, :, xp.newaxis] / (xp.pi**0.5)
 
-        # nf x nloc x a_sel x a_sel x (n_dim + a_dim + 1)
-        rho3_input = xp.concat([node_for_angle, periph_sum, cos_input], axis=-1)
+        rho3_parts = [node_for_angle, periph_sum, cos_input]
+        if self.use_hfea_v2e:
+            rho3_parts.append(angle_ebd)
+        rho3_input = xp.concat(rho3_parts, axis=-1)
         # nf x nloc x a_sel x a_sel x a_dim
         he3_update = self.act(self.rho_3(rho3_input))
         a_update_list.append(he3_update)
@@ -505,6 +525,8 @@ class HGNNLayer(NativeOP):
             "update_residual": self.update_residual,
             "update_residual_init": self.update_residual_init,
             "precision": self.precision,
+            "use_hfea_v2e": self.use_hfea_v2e,
+            "use_cross_order_v2e": self.use_cross_order_v2e,
             "phi_2": self.phi_2.serialize(),
             "rho_2": self.rho_2.serialize(),
             "phi_3": self.phi_3.serialize(),
@@ -646,6 +668,8 @@ class DescrptBlockHGNN(NativeOP, DescriptorBlock):
         fix_stat_std: float = 0.3,
         seed: int | list[int] | None = None,
         trainable: bool = True,
+        use_hfea_v2e: bool = False,
+        use_cross_order_v2e: bool = False,
     ) -> None:
         super().__init__()
         self.e_rcut = float(e_rcut)
@@ -670,6 +694,8 @@ class DescrptBlockHGNN(NativeOP, DescriptorBlock):
         self.fix_stat_std = fix_stat_std
         self.set_stddev_constant = fix_stat_std != 0.0
         self.use_exp_switch = use_exp_switch
+        self.use_hfea_v2e = use_hfea_v2e
+        self.use_cross_order_v2e = use_cross_order_v2e
 
         self.n_dim = n_dim
         self.e_dim = e_dim
@@ -725,6 +751,8 @@ class DescrptBlockHGNN(NativeOP, DescriptorBlock):
                     precision=precision,
                     seed=child_seed(child_seed(seed, 2), ii),
                     trainable=trainable,
+                    use_hfea_v2e=use_hfea_v2e,
+                    use_cross_order_v2e=use_cross_order_v2e,
                 )
             )
         self.layers = layers
@@ -1000,6 +1028,8 @@ class DescrptBlockHGNN(NativeOP, DescriptorBlock):
             "precision": self.precision,
             "use_exp_switch": self.use_exp_switch,
             "fix_stat_std": self.fix_stat_std,
+            "use_hfea_v2e": self.use_hfea_v2e,
+            "use_cross_order_v2e": self.use_cross_order_v2e,
             "edge_embd": self.edge_embd.serialize(),
             "angle_embd": self.angle_embd.serialize(),
             "hgnn_layers": [layer.serialize() for layer in self.layers],

@@ -231,5 +231,19 @@ class TestEnergyModelHGNN(
         self.model.eval()
 
 
+model_hgnn_enhanced = copy.deepcopy(model_hgnn)
+model_hgnn_enhanced["descriptor"]["hgnn"]["use_hfea_v2e"] = True
+model_hgnn_enhanced["descriptor"]["hgnn"]["use_cross_order_v2e"] = True
+
+
+class TestEnergyModelHGNNEnhanced(
+    unittest.TestCase, TranslationTest, RotationTest, PermutationTest
+):
+    def setUp(self) -> None:
+        model_params = copy.deepcopy(model_hgnn_enhanced)
+        self.model = get_model(model_params).to(env.DEVICE)
+        self.model.eval()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -23,7 +23,9 @@
         "use_exp_switch": true,
         "update_style": "res_residual",
         "update_residual": 0.1,
-        "update_residual_init": "const"
+        "update_residual_init": "const",
+        "use_hfea_v2e": true,
+        "use_cross_order_v2e": true
       },
       "activation_function": "silut:10.0",
       "use_tebd_bias": false,
